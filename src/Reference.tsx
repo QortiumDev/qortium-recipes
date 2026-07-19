@@ -275,8 +275,9 @@ export function Reference() {
             <p>
               A line scales only when <code>scalable</code> is true and <code>amount</code> is
               numeric. Ranges scale both ends. Text such as <code>salt to taste</code> remains
-              unchanged. Custom servings use requested servings divided by{' '}
-              <code>baseServings</code>.
+              unchanged. Known English units switch between singular and plural in scaled
+              views; unknown or abbreviated unit labels remain verbatim. Custom servings use
+              requested servings divided by <code>baseServings</code>.
             </p>
           </article>
         </div>

@@ -62,6 +62,28 @@ describe('ingredient scaling', () => {
     const ingredient = parseIngredientLine('2–3 cloves garlic', 'garlic');
     expect(ingredient && composeIngredientText(ingredient, 0.5)).toBe('1–1 ½ cloves garlic');
   });
+
+  it('uses singular and plural forms for known scaled units', () => {
+    const teaspoon = parseIngredientLine('1 teaspoon cumin', 'cumin');
+    const tablespoons = parseIngredientLine('4 Tablespoons olive oil', 'oil');
+    const can = {
+      ...parseIngredientLine('1 can tomatoes', 'tomatoes')!,
+      item: 'diced tomatoes (28 oz)',
+    };
+
+    expect(teaspoon && composeIngredientText(teaspoon, 2)).toBe('2 teaspoons cumin');
+    expect(tablespoons && composeIngredientText(tablespoons, 0.25)).toBe('1 Tablespoon olive oil');
+    expect(composeIngredientText(can, 0.5)).toBe('½ can diced tomatoes (28 oz)');
+    expect(composeIngredientText(can, 2)).toBe('2 cans diced tomatoes (28 oz)');
+  });
+
+  it('keeps unknown and abbreviated unit labels stable', () => {
+    const custom = parseIngredientLine('1 scoop protein powder', 'protein');
+    const abbreviated = parseIngredientLine('1 tbsp paprika', 'paprika');
+
+    expect(custom && composeIngredientText(custom, 2)).toBe('2 scoop protein powder');
+    expect(abbreviated && composeIngredientText(abbreviated, 2)).toBe('2 tbsp paprika');
+  });
 });
 
 describe('recipe validation and interchange', () => {
@@ -75,6 +97,21 @@ describe('recipe validation and interchange', () => {
     const validation = validateRecipe(recipe);
     expect(validation.errors).toEqual([]);
     expect(validation.recipe?.ingredients).toHaveLength(2);
+  });
+
+  it('preserves a count noun in unit when the structured item is intentionally empty', () => {
+    const recipe = createBlankRecipe();
+    recipe.name = 'Onion soup';
+    recipe.ingredients = [{
+      id: 'onions', text: '2 onions', amount: 2, amountMax: null,
+      unit: 'onion', item: '', scalable: true,
+    }];
+    recipe.instructions = ['Cook.'];
+
+    const validation = validateRecipe(recipe);
+    expect(validation.recipe?.ingredients[0].item).toBe('');
+    expect(validation.recipe && composeIngredientText(validation.recipe.ingredients[0], 0.5)).toBe('1 onion');
+    expect(validation.recipe && composeIngredientText(validation.recipe.ingredients[0], 2)).toBe('4 onions');
   });
 
   it('creates stable resource identifiers', () => {

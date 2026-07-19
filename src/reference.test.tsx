@@ -37,6 +37,7 @@ describe('Recipes developer reference', () => {
     expect(html).toContain('salt to taste');
     expect(html).toContain('scalable');
     expect(html).toContain('baseServings');
+    expect(html).toContain('singular and plural');
   });
 
   it('documents bridge actions, exact READY confirmation, and public semantics', () => {

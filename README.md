@@ -44,6 +44,8 @@ Each recipe is a separate versioned JSON resource under its author's registered 
 name. Ingredient entries preserve the original text and may additionally carry a numeric
 amount, optional maximum, unit, item text, and `scalable` flag. The viewer changes only
 confirmed numeric amounts; free-text entries such as `salt to taste` remain unchanged.
+Known English units switch between singular and plural in scaled views; unknown and
+abbreviated unit labels remain as entered.
 
 The app exports Schema.org `Recipe` JSON-LD for interchange. RecipeMD and website imports
 are possible future adapters, but arbitrary text parsing is deliberately best-effort and
