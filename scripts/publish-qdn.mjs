@@ -161,32 +161,20 @@ function getApiKeySource() {
   const explicitApiKey = readEnv('NODE_API_KEY')?.trim();
 
   if (explicitApiKey) {
-    return {
-      apiKey: explicitApiKey,
-      label: `${ENV_PREFIX}_NODE_API_KEY`,
-    };
+    return explicitApiKey;
   }
 
   if (readEnv('NODE_API_KEY_PATH')?.trim()) {
-    return {
-      apiKey: readText(apiKeyPath),
-      label: apiKeyPath,
-    };
+    return readText(apiKeyPath);
   }
 
   const runningCoreApiKeyPath = getRunningLocalCoreApiKeyPath();
 
   if (runningCoreApiKeyPath) {
-    return {
-      apiKey: readText(runningCoreApiKeyPath),
-      label: runningCoreApiKeyPath,
-    };
+    return readText(runningCoreApiKeyPath);
   }
 
-  return {
-    apiKey: readText(apiKeyPath),
-    label: apiKeyPath,
-  };
+  return readText(apiKeyPath);
 }
 
 function decodeBase58(value) {
@@ -479,15 +467,13 @@ if (!existsSync(distPath)) {
   throw new Error(`Build output does not exist: ${distPath}. Run npm run build first.`);
 }
 
-const apiKeySource = getApiKeySource();
-const apiKey = apiKeySource.apiKey;
+const apiKey = getApiKeySource();
 const account = getLocalPreviewAccount();
 
 console.log(`Node: ${nodeApiUrl}`);
 console.log(`Owner: ${account.accountAddress}`);
 console.log(`Resource: qdn://${service}/${publishName}/${identifier}`);
 console.log(`Source: ${distPath}`);
-console.log(`API key: loaded from ${apiKeySource.label}`);
 
 const status = await requestJson('/admin/status');
 
