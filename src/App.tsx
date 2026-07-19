@@ -2,16 +2,30 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { RecipeCard } from './RecipeCard';
 import { RecipeDetail } from './RecipeDetail';
 import { RecipeEditor } from './RecipeEditor';
+import { Reference } from './Reference';
+import {
+  applyDisplaySettings,
+  getDisplaySettingsUpdateFromMessage,
+  getInitialDisplaySettings,
+  normalizeHomeSettingsHostMessage,
+} from './displaySettings';
 import { getBridgeState, qdnRequest } from './qdnRequest';
 import {
   canEditResource,
   fetchPublishedRecipe,
   loadAccountContext,
   publishRecipe,
+  requireTransactionSignature,
   searchRecipeResources,
   waitForRecipeReady,
 } from './qdnRecipes';
 import { buildRecipeIdentifier } from './recipe';
+import {
+  navigateRecipeRoute,
+  parseRecipeRoute,
+  subscribeToRecipeRoute,
+  type RecipeRouteView,
+} from './recipeRoute';
 import {
   deleteDraft,
   loadDrafts,
@@ -29,7 +43,7 @@ import type {
   RecipeV1,
 } from './types';
 
-type View = 'browse' | 'detail' | 'editor';
+type View = 'browse' | 'detail' | 'developers' | 'editor';
 
 function hasAction(state: BridgeState | null, action: string) {
   return !!state?.actions.some((candidate) => candidate.toUpperCase() === action.toUpperCase());
@@ -50,9 +64,8 @@ function metadataTitle(resource: QdnResource) {
 }
 
 export function App() {
-  const [view, setView] = useState<View>(() =>
-    new URLSearchParams(window.location.search).get('view') === 'editor' ? 'editor' : 'browse',
-  );
+  const [view, setView] = useState<View>(() => parseRecipeRoute(window.location.search));
+  const [, setDisplaySettings] = useState(getInitialDisplaySettings);
   const [bridgeState, setBridgeState] = useState<BridgeState | null>(null);
   const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null);
   const [accountContext, setAccountContext] = useState<AccountContext>({ account: null, writableNames: [] });
@@ -74,6 +87,23 @@ export function App() {
     hasAction(bridgeState, 'PUBLISH_QDN_RESOURCE');
   const favoriteCount = favorites.size;
 
+  function updateDisplaySettings(value: unknown) {
+    setDisplaySettings((current) => {
+      const next = getDisplaySettingsUpdateFromMessage(value, current);
+      if (next) {
+        applyDisplaySettings(next);
+        return next;
+      }
+      return current;
+    });
+  }
+
+  function showRoute(next: RecipeRouteView, replace = false) {
+    navigateRecipeRoute(next, replace);
+    setView(next);
+    window.scrollTo({ top: 0 });
+  }
+
   async function refreshResources(search = query) {
     const result = await searchRecipeResources(search);
     setResources(result);
@@ -85,6 +115,12 @@ export function App() {
     try {
       const state = await getBridgeState();
       setBridgeState(state);
+
+      if (hasAction(state, 'GET_HOME_SETTINGS')) {
+        void qdnRequest<Record<string, unknown>>({ action: 'GET_HOME_SETTINGS' })
+          .then((settings) => updateDisplaySettings({ action: 'DISPLAY_SETTINGS_CHANGED', ...settings }))
+          .catch(() => undefined);
+      }
 
       const [statusResult, resourceResult] = await Promise.allSettled([
         qdnRequest<NodeStatus>({ action: 'GET_NODE_STATUS' }),
@@ -119,6 +155,27 @@ export function App() {
     initialize();
   }, []);
 
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      updateDisplaySettings(normalizeHomeSettingsHostMessage(event.data));
+    };
+    const onSettingsChanged = (event: Event) => {
+      updateDisplaySettings({
+        action: 'DISPLAY_SETTINGS_CHANGED',
+        ...(event as CustomEvent<Record<string, unknown>>).detail,
+      });
+    };
+    const unsubscribeRoute = subscribeToRecipeRoute(setView);
+
+    window.addEventListener('message', onMessage);
+    window.addEventListener('qortiumHomeSettingsChanged', onSettingsChanged);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('qortiumHomeSettingsChanged', onSettingsChanged);
+      unsubscribeRoute();
+    };
+  }, []);
+
   async function search(event: FormEvent) {
     event.preventDefault();
     setIsLoading(true);
@@ -139,7 +196,8 @@ export function App() {
       const published = await fetchPublishedRecipe(resource);
       setSelected(published);
       setView('detail');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      navigateRecipeRoute('browse', true);
+      window.scrollTo({ top: 0 });
     } catch (loadError) {
       setError(`Could not open ${metadataTitle(resource)}. ${loadError instanceof Error ? loadError.message : String(loadError)}`);
     } finally {
@@ -150,7 +208,7 @@ export function App() {
   function beginNewRecipe() {
     setEditingRecipe(null);
     setEditingResource(null);
-    setView('editor');
+    showRoute('editor');
   }
 
   function editPublished() {
@@ -159,20 +217,20 @@ export function App() {
     }
     setEditingRecipe(selected.recipe);
     setEditingResource(selected.resource);
-    setView('editor');
+    showRoute('editor');
   }
 
   function editDraft(draft: RecipeV1) {
     setEditingRecipe(draft);
     setEditingResource(null);
-    setView('editor');
+    showRoute('editor');
   }
 
   function handleSaveDraft(recipe: RecipeV1) {
     saveDraft(recipe);
     setDrafts(loadDrafts());
     setNotice(`Saved “${recipe.name || 'Untitled recipe'}” on this device.`);
-    setView('browse');
+    showRoute('browse');
   }
 
   async function handlePublish(recipe: RecipeV1) {
@@ -184,16 +242,17 @@ export function App() {
     setNotice('');
     try {
       const publication = await publishRecipe(publishName, recipe);
+      const transactionSignature = requireTransactionSignature(publication.result);
       const resource = await waitForRecipeReady(
         publishName,
         publication.identifier,
-        publication.result.transactionSignature || '',
+        transactionSignature,
       );
       if (!resource) {
         saveDraft(publication.payload);
         setDrafts(loadDrafts());
         setNotice('The publish request was submitted, but READY was not confirmed yet. The local draft was kept.');
-        setView('browse');
+        showRoute('browse', true);
         return;
       }
 
@@ -203,6 +262,7 @@ export function App() {
       const published = await fetchPublishedRecipe(resource);
       setSelected(published);
       setNotice(`Published “${recipe.name}” under ${publishName}.`);
+      navigateRecipeRoute('browse', true);
       setView('detail');
     } catch (publishError) {
       saveDraft(recipe);
@@ -234,6 +294,62 @@ export function App() {
 
   const selectedFavorite = useMemo(() => selected ? isFavorite(selected.resource) : false, [selected, favorites]);
 
+  const workspaceHeader = (
+    <>
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">Qortium community cookbook</p>
+          <h1>Recipes</h1>
+          <p className="topbar__description">Share recipes that stay readable as written—and scale when quantities are structured.</p>
+        </div>
+        <div className="topbar__actions">
+          {accountContext.writableNames.length > 1 ? (
+            <label className="name-picker">
+              <span>Publish as</span>
+              <select value={publishName} onChange={(event) => setPublishName(event.target.value)}>
+                {accountContext.writableNames.map((name) => <option key={name}>{name}</option>)}
+              </select>
+            </label>
+          ) : publishName ? <span className="account-chip">Publishing as {publishName}</span> : null}
+          <button className="button" type="button" onClick={beginNewRecipe}>New recipe</button>
+        </div>
+      </header>
+      <nav aria-label="Recipes workspaces" className="workspace-tabs">
+        <button
+          aria-current={view === 'browse' ? 'page' : undefined}
+          className={view === 'browse' ? 'workspace-tab is-active' : 'workspace-tab'}
+          onClick={() => showRoute('browse')}
+          type="button"
+        >
+          Browse
+        </button>
+        <button
+          aria-current={view === 'developers' ? 'page' : undefined}
+          className={view === 'developers' ? 'workspace-tab is-active' : 'workspace-tab'}
+          onClick={() => showRoute('developers')}
+          type="button"
+        >
+          Developers
+        </button>
+      </nav>
+    </>
+  );
+
+  if (view === 'developers') {
+    return (
+      <main className="app-shell">
+        <div className="workspace">
+          {workspaceHeader}
+          <Reference />
+          <footer className="app-footer">
+            Recipes {__APP_VERSION__} · Always-English developer contract for{' '}
+            <code>qortium.recipes.recipe.v1</code>.
+          </footer>
+        </div>
+      </main>
+    );
+  }
+
   if (view === 'editor') {
     return (
       <main className="app-shell">
@@ -241,7 +357,10 @@ export function App() {
           canPublish={canPublish}
           initialRecipe={editingRecipe}
           isPublishing={isPublishing}
-          onCancel={() => setView(selected ? 'detail' : 'browse')}
+          onCancel={() => {
+            navigateRecipeRoute('browse', true);
+            setView(selected ? 'detail' : 'browse');
+          }}
           onPublish={handlePublish}
           onSaveDraft={handleSaveDraft}
           publishName={publishName}
@@ -269,24 +388,7 @@ export function App() {
   return (
     <main className="app-shell">
       <div className="workspace">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Qortium community cookbook</p>
-            <h1>Recipes</h1>
-            <p className="topbar__description">Share recipes that stay readable as written—and scale when quantities are structured.</p>
-          </div>
-          <div className="topbar__actions">
-            {accountContext.writableNames.length > 1 ? (
-              <label className="name-picker">
-                <span>Publish as</span>
-                <select value={publishName} onChange={(event) => setPublishName(event.target.value)}>
-                  {accountContext.writableNames.map((name) => <option key={name}>{name}</option>)}
-                </select>
-              </label>
-            ) : publishName ? <span className="account-chip">Publishing as {publishName}</span> : null}
-            <button className="button" type="button" onClick={beginNewRecipe}>New recipe</button>
-          </div>
-        </header>
+        {workspaceHeader}
 
         <div className="runtime-strip">
           <span><strong>{nodeStatusLabel(nodeStatus)}</strong>{nodeStatus?.height ? ` · height ${nodeStatus.height.toLocaleString()}` : ''}</span>
@@ -364,7 +466,10 @@ export function App() {
 
         <footer className="app-footer">
           Recipes {__APP_VERSION__} · Data uses <code>qortium.recipes.recipe.v1</code> under{' '}
-          <code>JSON/&lt;author&gt;/{buildRecipeIdentifier('<id>')}</code>.
+          <code>JSON/&lt;author&gt;/{buildRecipeIdentifier('<id>')}</code>.{' '}
+          <button className="footer-link" type="button" onClick={() => showRoute('developers')}>
+            Developer reference
+          </button>
         </footer>
       </div>
     </main>

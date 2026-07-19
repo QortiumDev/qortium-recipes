@@ -10,6 +10,12 @@ import type {
 } from './types';
 
 export const RECIPE_SERVICE = 'JSON';
+export const RECIPE_FILENAME = 'recipe.json';
+export const RECIPE_MAX_BYTES = 512_000;
+export const RECIPE_METADATA_TITLE_BYTES = 80;
+export const RECIPE_METADATA_DESCRIPTION_BYTES = 240;
+export const RECIPE_METADATA_TAG_BYTES = 20;
+export const RECIPE_METADATA_TAG_LIMIT = 5;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -64,6 +70,16 @@ export function canEditResource(resource: QdnResource, writableNames: string[]) 
   return writableNames.some((name) => name.toLowerCase() === resource.name.toLowerCase());
 }
 
+export function requireTransactionSignature(result: PublishActionResult) {
+  const signature = stringValue(result.transactionSignature);
+  if (!signature) {
+    throw new Error(
+      'The publish request did not return a transaction signature, so this recipe cannot be confirmed exactly.',
+    );
+  }
+  return signature;
+}
+
 export async function searchRecipeResources(query = '', offset = 0, limit = 24): Promise<QdnResource[]> {
   const result = await qdnRequest<unknown>({
     action: 'SEARCH_QDN_RESOURCES',
@@ -96,7 +112,7 @@ export async function fetchPublishedRecipe(resource: QdnResource): Promise<Publi
   const payload = await qdnRequest<unknown>({
     action: 'FETCH_QDN_RESOURCE',
     identifier: resource.identifier,
-    maxBytes: 512_000,
+    maxBytes: RECIPE_MAX_BYTES,
     name: resource.name,
     service: RECIPE_SERVICE,
   });
@@ -138,17 +154,26 @@ export async function publishRecipe(name: string, recipe: RecipeV1) {
   }
 
   const payload = validation.recipe;
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
+  if (payloadBytes > RECIPE_MAX_BYTES) {
+    throw new Error(`Recipe JSON exceeds the ${RECIPE_MAX_BYTES.toLocaleString()} byte app limit.`);
+  }
   const identifier = buildRecipeIdentifier(payload.id);
   const result = await qdnRequest<PublishActionResult>({
     action: 'PUBLISH_QDN_RESOURCE',
     base64: utf8Base64(payload),
-    description: truncateUtf8(payload.description || `${payload.name} recipe`, 240),
-    filename: 'recipe.json',
+    description: truncateUtf8(
+      payload.description || `${payload.name} recipe`,
+      RECIPE_METADATA_DESCRIPTION_BYTES,
+    ),
+    filename: RECIPE_FILENAME,
     identifier,
     name,
     service: RECIPE_SERVICE,
-    tags: ['qrecipes', 'recipe', 'v1', ...payload.tags].slice(0, 5).map((tag) => truncateUtf8(tag, 20)),
-    title: truncateUtf8(payload.name, 80),
+    tags: ['qrecipes', 'recipe', 'v1', ...payload.tags]
+      .slice(0, RECIPE_METADATA_TAG_LIMIT)
+      .map((tag) => truncateUtf8(tag, RECIPE_METADATA_TAG_BYTES)),
+    title: truncateUtf8(payload.name, RECIPE_METADATA_TITLE_BYTES),
   });
 
   return { identifier, payload, result };
