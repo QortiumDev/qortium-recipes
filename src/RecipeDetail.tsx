@@ -57,7 +57,9 @@ export function RecipeDetail({
   return (
     <section className="detail-view">
       <div className="detail-actions">
-        <button className="button button--ghost" type="button" onClick={onBack}>← Browse</button>
+        <button className="button button--ghost" type="button" onClick={onBack}>
+          <span aria-hidden="true" className="back-arrow">←</span> Browse
+        </button>
         <div>
           <button className="button button--ghost" type="button" onClick={() => downloadSchemaOrg(recipe, resource.name)}>
             Export JSON-LD
