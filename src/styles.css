@@ -1152,6 +1152,7 @@ h2 {
   display: grid;
   grid-template-columns: 34px 1fr;
   gap: 12px;
+  counter-increment: steps;
   line-height: 1.62;
 }
 
@@ -1163,7 +1164,7 @@ h2 {
   border-radius: 50%;
   background: var(--green-soft);
   color: var(--green);
-  content: counter(list-item);
+  content: counter(steps);
   font-size: 0.78rem;
   font-weight: 800;
 }
