@@ -85,6 +85,36 @@ const KNOWN_UNITS = [
   'g',
 ];
 
+const UNIT_FORMS: Array<[singular: string, plural: string]> = [
+  ['fluid ounce', 'fluid ounces'],
+  ['tablespoon', 'tablespoons'],
+  ['teaspoon', 'teaspoons'],
+  ['milliliter', 'milliliters'],
+  ['kilogram', 'kilograms'],
+  ['centiliter', 'centiliters'],
+  ['package', 'packages'],
+  ['pinch', 'pinches'],
+  ['clove', 'cloves'],
+  ['slice', 'slices'],
+  ['sprig', 'sprigs'],
+  ['stalk', 'stalks'],
+  ['stick', 'sticks'],
+  ['piece', 'pieces'],
+  ['ounce', 'ounces'],
+  ['pound', 'pounds'],
+  ['gram', 'grams'],
+  ['cup', 'cups'],
+  ['can', 'cans'],
+  ['jar', 'jars'],
+  ['bunch', 'bunches'],
+  ['handful', 'handfuls'],
+  ['celery rib', 'celery ribs'],
+  ['rib', 'ribs'],
+  ['onion', 'onions'],
+  ['carrot', 'carrots'],
+  ['lemon', 'lemons'],
+];
+
 const DISPLAY_FRACTIONS: Array<[number, string]> = [
   [1 / 8, '⅛'],
   [1 / 5, '⅕'],
@@ -253,6 +283,28 @@ export function formatAmount(value: number) {
   return Number(value.toFixed(2)).toString();
 }
 
+function preserveUnitCase(source: string, value: string) {
+  if (source === source.toUpperCase()) {
+    return value.toUpperCase();
+  }
+  if (/^[A-Z]/.test(source)) {
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+  return value;
+}
+
+function formatScaledUnit(unit: string, amount: number, amountMax: number | null) {
+  const normalized = unit.trim().toLowerCase();
+  const forms = UNIT_FORMS.find(([singular, plural]) => normalized === singular || normalized === plural);
+  if (!forms) {
+    return unit;
+  }
+
+  const largestAmount = Math.max(Math.abs(amount), Math.abs(amountMax ?? amount));
+  const usePlural = largestAmount === 0 || largestAmount > 1;
+  return preserveUnitCase(unit, forms[usePlural ? 1 : 0]);
+}
+
 export function composeIngredientText(ingredient: RecipeIngredient, factor = 1) {
   if (!ingredient.scalable || ingredient.amount === null) {
     return ingredient.text || ingredient.item;
@@ -262,9 +314,12 @@ export function composeIngredientText(ingredient: RecipeIngredient, factor = 1) 
     return ingredient.text;
   }
 
-  const amount = formatAmount(ingredient.amount * factor);
-  const amountMax = ingredient.amountMax === null ? '' : formatAmount(ingredient.amountMax * factor);
-  return [amountMax ? `${amount}–${amountMax}` : amount, ingredient.unit, ingredient.item]
+  const scaledAmount = ingredient.amount * factor;
+  const scaledAmountMax = ingredient.amountMax === null ? null : ingredient.amountMax * factor;
+  const amount = formatAmount(scaledAmount);
+  const amountMax = scaledAmountMax === null ? '' : formatAmount(scaledAmountMax);
+  const unit = formatScaledUnit(ingredient.unit, scaledAmount, scaledAmountMax);
+  return [amountMax ? `${amount}–${amountMax}` : amount, unit, ingredient.item]
     .filter(Boolean)
     .join(' ');
 }
@@ -311,7 +366,8 @@ function normalizeIngredient(value: unknown, index: number): RecipeIngredient | 
   }
 
   const rawText = text(value.text);
-  const item = text(value.item) || rawText;
+  const unit = text(value.unit);
+  const item = text(value.item) || (unit ? '' : rawText);
   if (!rawText && !item) {
     return null;
   }
@@ -323,7 +379,7 @@ function normalizeIngredient(value: unknown, index: number): RecipeIngredient | 
     text: rawText || item,
     amount,
     amountMax: amountMax !== null && amount !== null && amountMax >= amount ? amountMax : null,
-    unit: text(value.unit),
+    unit,
     item,
     scalable: value.scalable === true && amount !== null,
   };
