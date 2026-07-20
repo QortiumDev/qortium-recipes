@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { RecipeV1 } from './types';
 import {
   buildRecipeIdentifier,
   composeIngredientText,
@@ -6,6 +7,7 @@ import {
   formatAmount,
   parseIngredientLine,
   parseIngredientLines,
+  recipeImages,
   recipeImageUrl,
   toSchemaOrgRecipe,
   validateRecipe,
@@ -138,6 +140,35 @@ describe('recipe validation and interchange', () => {
       recipeYield: '2 servings',
       recipeIngredient: ['1 cup oats'],
     });
+  });
+
+  it('normalizes a backward-compatible cover into an ordered image gallery', () => {
+    const recipe = createBlankRecipe();
+    recipe.name = 'Oatmeal';
+    recipe.image = 'qdn://IMAGE/Cook/cover';
+    recipe.images = ['qdn://IMAGE/Cook/step-1', 'qdn://IMAGE/Cook/cover'];
+    recipe.ingredients = parseIngredientLines('1 cup oats');
+    recipe.instructions = ['Cook.'];
+
+    const validation = validateRecipe(recipe);
+    expect(validation.recipe?.image).toBe('qdn://IMAGE/Cook/cover');
+    expect(validation.recipe?.images).toEqual([
+      'qdn://IMAGE/Cook/cover',
+      'qdn://IMAGE/Cook/step-1',
+    ]);
+    expect(validation.recipe && recipeImages(validation.recipe)).toEqual(validation.recipe?.images);
+    expect(validation.recipe && toSchemaOrgRecipe(validation.recipe).image).toEqual(validation.recipe?.images);
+  });
+
+  it('upgrades an image-only v1 recipe without rejecting it', () => {
+    const recipe = createBlankRecipe();
+    recipe.name = 'Oatmeal';
+    recipe.image = 'qdn://IMAGE/Cook/cover';
+    recipe.ingredients = parseIngredientLines('1 cup oats');
+    recipe.instructions = ['Cook.'];
+    delete (recipe as Partial<RecipeV1>).images;
+
+    expect(validateRecipe(recipe).recipe?.images).toEqual(['qdn://IMAGE/Cook/cover']);
   });
 
   it('maps QDN image URIs to the active node resource route', () => {

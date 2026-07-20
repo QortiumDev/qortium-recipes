@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { composeIngredientText, recipeImageUrl, toSchemaOrgRecipe } from './recipe';
+import { useEffect, useMemo, useState } from 'react';
+import { composeIngredientText, recipeImages, recipeImageUrl, toSchemaOrgRecipe } from './recipe';
 import type { PublishedRecipe, RecipeV1 } from './types';
 
 function formatMinutes(minutes: number | null) {
@@ -43,9 +43,17 @@ export function RecipeDetail({
 }) {
   const { recipe, resource } = published;
   const [factor, setFactor] = useState(1);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const selectedServings = recipe.baseServings ? recipe.baseServings * factor : null;
   const totalMinutes = (recipe.prepMinutes ?? 0) + (recipe.cookMinutes ?? 0);
-  const imageUrl = useMemo(() => recipeImageUrl(recipe.image), [recipe.image]);
+  const imageUrls = useMemo(
+    () => recipeImages(recipe).map(recipeImageUrl).filter(Boolean),
+    [recipe],
+  );
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [recipe.id, resource.identifier]);
 
   function setServings(value: string) {
     const servings = Number(value);
@@ -72,7 +80,32 @@ export function RecipeDetail({
       </div>
 
       <article className="recipe-detail">
-        {imageUrl ? <img className="recipe-hero" src={imageUrl} alt="" /> : null}
+        {imageUrls.length ? (
+          <section aria-label={`${recipe.name} photos`} className="recipe-gallery">
+            <img
+              className="recipe-hero"
+              src={imageUrls[activeImageIndex] ?? imageUrls[0]}
+              alt={`${recipe.name}, photo ${activeImageIndex + 1} of ${imageUrls.length}`}
+            />
+            {imageUrls.length > 1 ? (
+              <div className="recipe-gallery__thumbnails" role="list">
+                {imageUrls.map((imageUrl, index) => (
+                  <span key={`${index}-${imageUrl}`} role="listitem">
+                    <button
+                      aria-current={index === activeImageIndex ? 'true' : undefined}
+                      aria-label={`Show photo ${index + 1} of ${imageUrls.length}`}
+                      className="recipe-gallery__thumbnail"
+                      onClick={() => setActiveImageIndex(index)}
+                      type="button"
+                    >
+                      <img src={imageUrl} alt="" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
         <div className="recipe-detail__header">
           <p className="eyebrow">Published by {resource.name}</p>
           <h1>{recipe.name}</h1>

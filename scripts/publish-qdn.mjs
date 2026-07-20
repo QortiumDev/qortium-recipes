@@ -25,6 +25,7 @@ const nodeApiUrl = (readEnv('NODE_API_URL') ?? DEFAULT_NODE_API_URL).replace(/\/
 const publishName = readEnv('QDN_NAME') ?? DEFAULT_NAME;
 const identifier = readEnv('QDN_IDENTIFIER') ?? DEFAULT_IDENTIFIER;
 const publishTitle = readEnv('QDN_TITLE') ?? DEFAULT_TITLE;
+const publishDescription = readEnv('QDN_DESCRIPTION') ?? DEFAULT_DESCRIPTION;
 const service = readEnv('QDN_SERVICE') ?? 'APP';
 const distPath = path.resolve(repoRoot, readEnv('DIST_PATH') ?? 'dist');
 const apiKeyPath = expandHomePath(
@@ -450,7 +451,7 @@ async function publishResource(account) {
   const rawUnsignedBytes58 = await request(
     appendQuery(resourcePathname, {
       title: publishTitle,
-      description: DEFAULT_DESCRIPTION,
+      description: publishDescription,
       fee: 0,
     }),
     {

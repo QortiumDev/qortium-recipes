@@ -2,6 +2,7 @@ import type { RecipeIngredient, RecipeV1, RecipeValidation } from './types';
 
 export const RECIPE_SCHEMA = 'qortium.recipes.recipe.v1' as const;
 export const RECIPE_IDENTIFIER_PREFIX = 'qrecipes.v1.r.';
+export const RECIPE_IMAGE_LIMIT = 12;
 
 const UNICODE_FRACTIONS: Record<string, [number, number]> = {
   '½': [1, 2],
@@ -351,6 +352,7 @@ export function createBlankRecipe(): RecipeV1 {
     cuisine: '',
     tags: [],
     image: '',
+    images: [],
     ingredients: [],
     instructions: [],
     notes: [],
@@ -436,6 +438,11 @@ export function validateRecipe(value: unknown): RecipeValidation {
   const tags = Array.isArray(value.tags)
     ? [...new Set(value.tags.map(text).filter(Boolean))].slice(0, 20)
     : [];
+  const legacyImage = text(value.image).slice(0, 500);
+  const images = [...new Set([
+    legacyImage,
+    ...(Array.isArray(value.images) ? value.images.map((image) => text(image).slice(0, 500)) : []),
+  ].filter(Boolean))].slice(0, RECIPE_IMAGE_LIMIT);
   const createdAt = Number(value.createdAt);
   const updatedAt = Number(value.updatedAt);
 
@@ -453,7 +460,8 @@ export function validateRecipe(value: unknown): RecipeValidation {
       category: text(value.category).slice(0, 80),
       cuisine: text(value.cuisine).slice(0, 80),
       tags,
-      image: text(value.image).slice(0, 500),
+      image: images[0] ?? '',
+      images,
       ingredients,
       instructions,
       notes: Array.isArray(value.notes) ? value.notes.map(text).filter(Boolean).slice(0, 100) : [],
@@ -478,13 +486,15 @@ function minutesToDuration(minutes: number | null) {
 }
 
 export function toSchemaOrgRecipe(recipe: RecipeV1, authorName?: string) {
+  const images = recipeImages(recipe);
+
   return {
     '@context': 'https://schema.org',
     '@type': 'Recipe',
     name: recipe.name,
     description: recipe.description || undefined,
     author: authorName ? { '@type': 'Person', name: authorName } : undefined,
-    image: recipe.image || undefined,
+    image: images.length ? images : undefined,
     prepTime: minutesToDuration(recipe.prepMinutes),
     cookTime: minutesToDuration(recipe.cookMinutes),
     totalTime:
@@ -502,6 +512,13 @@ export function toSchemaOrgRecipe(recipe: RecipeV1, authorName?: string) {
     })),
     isBasedOn: recipe.source.url || undefined,
   };
+}
+
+export function recipeImages(recipe: Pick<RecipeV1, 'image' | 'images'>) {
+  return [...new Set([
+    recipe.image,
+    ...(Array.isArray(recipe.images) ? recipe.images : []),
+  ].map((image) => image.trim()).filter(Boolean))].slice(0, RECIPE_IMAGE_LIMIT);
 }
 
 export function recipeImageUrl(image: string) {
