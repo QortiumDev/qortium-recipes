@@ -30,6 +30,8 @@ describe('Recipes developer reference', () => {
       expect(html).toContain(value);
     }
     expect(html).toContain('64-byte');
+    expect(html).toContain('ordered, de-duplicated gallery');
+    expect(RECIPE_REFERENCE_EXAMPLES.recipe).toContain('"images"');
   });
 
   it('documents free-text preservation and conservative scaling', () => {

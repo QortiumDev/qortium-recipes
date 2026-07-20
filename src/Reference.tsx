@@ -1,7 +1,7 @@
 // Intentionally outside localization: public protocol references stay always-English.
 import { useState } from 'react';
 import { copyTextToClipboard } from './clipboard';
-import { RECIPE_IDENTIFIER_PREFIX, RECIPE_SCHEMA } from './recipe';
+import { RECIPE_IDENTIFIER_PREFIX, RECIPE_IMAGE_LIMIT, RECIPE_SCHEMA } from './recipe';
 import {
   RECIPE_FILENAME,
   RECIPE_MAX_BYTES,
@@ -28,6 +28,10 @@ export const RECIPE_REFERENCE_EXAMPLES = {
     cuisine: 'Mediterranean',
     tags: ['lentils', 'vegan'],
     image: 'qdn://IMAGE/Cook/lentil-soup',
+    images: [
+      'qdn://IMAGE/Cook/lentil-soup',
+      'qdn://IMAGE/Cook/lentil-soup-step-1',
+    ],
     ingredients: [
       { id: 'lentils', text: '1 1/2 cups lentils', amount: 1.5, amountMax: null, unit: 'cups', item: 'lentils', scalable: true },
       { id: 'salt', text: 'salt to taste', amount: null, amountMax: null, unit: '', item: 'salt to taste', scalable: false },
@@ -131,7 +135,7 @@ const jsonLd = {
   name: recipe.name,
   description: recipe.description || undefined,
   author: resource.name ? { '@type': 'Person', name: resource.name } : undefined,
-  image: recipe.image || undefined,
+  image: recipe.images?.length ? recipe.images : (recipe.image || undefined),
   prepTime: duration(recipe.prepMinutes),
   cookTime: duration(recipe.cookMinutes),
   totalTime: recipe.prepMinutes != null || recipe.cookMinutes != null
@@ -247,6 +251,7 @@ export function Reference() {
               <tr><td><code>prepMinutes</code>, <code>cookMinutes</code></td><td>Optional non-negative numbers.</td></tr>
               <tr><td><code>tags</code></td><td>Trimmed, de-duplicated payload tags; at most 20 retained.</td></tr>
               <tr><td><code>notes</code></td><td>Optional public notes; at most 100 non-empty entries retained.</td></tr>
+              <tr><td><code>image</code>, <code>images</code></td><td><code>image</code> is the backward-compatible cover URI. <code>images</code> is the ordered, de-duplicated gallery of at most {RECIPE_IMAGE_LIMIT} URIs; the cover is normalized to its first entry.</td></tr>
               <tr><td><code>source</code></td><td>Optional attribution name and URL; no private credentials.</td></tr>
               <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>Positive epoch milliseconds; invalid values normalize to the read time.</td></tr>
             </tbody>

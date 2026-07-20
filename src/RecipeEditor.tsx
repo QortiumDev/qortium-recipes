@@ -17,7 +17,12 @@ function numberValue(value: string) {
 }
 
 function cloneRecipe(recipe: RecipeV1) {
-  return JSON.parse(JSON.stringify(recipe)) as RecipeV1;
+  const cloned = JSON.parse(JSON.stringify(recipe)) as RecipeV1;
+  const images = [...new Set([
+    cloned.image,
+    ...(Array.isArray(cloned.images) ? cloned.images : []),
+  ].map((image) => image?.trim()).filter((image): image is string => !!image))];
+  return { ...cloned, image: images[0] ?? '', images };
 }
 
 export function RecipeEditor({
@@ -137,8 +142,16 @@ export function RecipeEditor({
             <input value={recipe.tags.join(', ')} onChange={(event) => patchRecipe({ tags: event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean) })} />
           </label>
           <label className="field field--wide">
-            <span>QDN image URI</span>
-            <input placeholder="qdn://IMAGE/Name/identifier" value={recipe.image} onChange={(event) => patchRecipe({ image: event.target.value })} />
+            <span>QDN image URIs <small>one per line; first is the cover</small></span>
+            <textarea
+              rows={4}
+              placeholder={'qdn://IMAGE/Name/cover\nqdn://IMAGE/Name/step-1'}
+              value={recipe.images.join('\n')}
+              onChange={(event) => {
+                const images = event.target.value.split('\n').map((image) => image.trim()).filter(Boolean);
+                patchRecipe({ image: images[0] ?? '', images });
+              }}
+            />
           </label>
         </section>
 

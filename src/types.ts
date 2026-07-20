@@ -98,6 +98,7 @@ export type RecipeV1 = {
   cuisine: string;
   tags: string[];
   image: string;
+  images: string[];
   ingredients: RecipeIngredient[];
   instructions: string[];
   notes: string[];

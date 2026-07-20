@@ -47,6 +47,11 @@ confirmed numeric amounts; free-text entries such as `salt to taste` remain unch
 Known English units switch between singular and plural in scaled views; unknown and
 abbreviated unit labels remain as entered.
 
+Recipes may include an ordered gallery of up to 12 image URIs. The first image is the
+cover used by compatible clients, while the legacy singular `image` field remains in the
+v1 payload for older readers. Images should be published as their own QDN resources and
+properly attributed through the recipe's source fields.
+
 The app exports Schema.org `Recipe` JSON-LD for interchange. RecipeMD and website imports
 are possible future adapters, but arbitrary text parsing is deliberately best-effort and
 reviewed by the author.
