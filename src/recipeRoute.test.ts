@@ -3,6 +3,7 @@ import {
   buildRecipeLink,
   buildRecipeRoute,
   getAppBaseAddress,
+  parseOpenAppTargetMessage,
   parseRecipeRoute,
   subscribeToRecipeRoute,
 } from './recipeRoute';
@@ -62,6 +63,36 @@ describe('Recipes routes', () => {
   it('builds a shareable qdn address for one recipe', () => {
     expect(buildRecipeLink('Alice', 'qrecipes.v1.r.abc123', { pathname: '/render/APP/Recipes/Recipes' }, {}))
       .toBe('qdn://APP/Recipes/Recipes?recipe=qrecipes.v1.r.abc123&author=Alice');
+  });
+
+  it('accepts a well-formed OPEN_APP_TARGET message from Home', () => {
+    expect(parseOpenAppTargetMessage({
+      action: 'OPEN_APP_TARGET',
+      requestedHandler: 'UI',
+      query: { recipe: 'qrecipes.v1.r.abc', author: 'Alice' },
+    })).toEqual({ view: 'recipe', identifier: 'qrecipes.v1.r.abc', name: 'Alice' });
+  });
+
+  it('rejects host messages that are malformed, misrouted, or not recipe targets', () => {
+    const valid = { recipe: 'qrecipes.v1.r.abc', author: 'Alice' };
+    const cases: unknown[] = [
+      null,
+      'OPEN_APP_TARGET',
+      { action: 'DISPLAY_SETTINGS_CHANGED', requestedHandler: 'UI', query: valid },
+      { action: 'OPEN_APP_TARGET', requestedHandler: 'API', query: valid },
+      { action: 'OPEN_APP_TARGET', requestedHandler: 'UI' },
+      { action: 'OPEN_APP_TARGET', requestedHandler: 'UI', query: 'nope' },
+      { action: 'OPEN_APP_TARGET', requestedHandler: 'UI', query: { recipe: 'qrecipes.v1.r.abc' } },
+      { action: 'OPEN_APP_TARGET', requestedHandler: 'UI', query: { author: 'Alice' } },
+      { action: 'OPEN_APP_TARGET', requestedHandler: 'UI', query: { recipe: valid.recipe, author: '   ' } },
+      // Must not become an arbitrary QDN fetch outside the recipe namespace.
+      { action: 'OPEN_APP_TARGET', requestedHandler: 'UI', query: { recipe: 'qortium.wallet.keys', author: 'Alice' } },
+      { action: 'OPEN_APP_TARGET', requestedHandler: 'UI', query: { recipe: 42, author: 'Alice' } },
+    ];
+
+    for (const value of cases) {
+      expect(parseOpenAppTargetMessage(value)).toBeNull();
+    }
   });
 
   it('rehydrates the workspace on Back and Forward popstate events', () => {

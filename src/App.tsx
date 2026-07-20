@@ -25,6 +25,7 @@ import { copyTextToClipboard } from './clipboard';
 import {
   buildRecipeLink,
   navigateRecipeRoute,
+  parseOpenAppTargetMessage,
   parseRecipeRoute,
   subscribeToRecipeRoute,
   type RecipeRoute,
@@ -169,6 +170,14 @@ export function App() {
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
+      // Home posts this instead of reloading the frame when a recipe link
+      // re-enters a tab that already has Recipes open. Push, so the inbound
+      // link leaves a Back entry just like an in-app open would.
+      const target = parseOpenAppTargetMessage(event.data);
+      if (target) {
+        showRoute(target);
+        return;
+      }
       updateDisplaySettings(normalizeHomeSettingsHostMessage(event.data));
     };
     const onSettingsChanged = (event: Event) => {
