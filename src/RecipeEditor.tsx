@@ -3,10 +3,12 @@ import {
   createBlankRecipe,
   parseIngredientLine,
   parseIngredientLines,
+  RECIPE_MEDIA_LIMIT,
+  recipeImageUrl,
   rebuildIngredientText,
   validateRecipe,
 } from './recipe';
-import type { RecipeIngredient, RecipeV1 } from './types';
+import type { RecipeIngredient, RecipeMedia, RecipeMediaPlacement, RecipeV1 } from './types';
 
 function numberValue(value: string) {
   if (!value.trim()) {
@@ -22,7 +24,42 @@ function cloneRecipe(recipe: RecipeV1) {
     cloned.image,
     ...(Array.isArray(cloned.images) ? cloned.images : []),
   ].map((image) => image?.trim()).filter((image): image is string => !!image))];
-  return { ...cloned, image: images[0] ?? '', images };
+  const media = cloned.media?.length ? cloned.media : images.map((uri, index) => ({
+    id: `legacy-image-${index + 1}`,
+    uri,
+    alt: '',
+    caption: '',
+    placement: { type: index === 0 ? 'cover' : 'gallery' } as RecipeMediaPlacement,
+  }));
+  return { ...cloned, image: images[0] ?? '', images, media };
+}
+
+function syncLegacyImages(media: RecipeMedia[]) {
+  const cover = media.find((item) => item.placement.type === 'cover');
+  const images = [...new Set(media.map((item) => item.uri.trim()).filter(Boolean))];
+  const image = cover?.uri.trim() || images[0] || '';
+  return { image, images: image ? [image, ...images.filter((uri) => uri !== image)] : images };
+}
+
+function encodePlacement(placement: RecipeMediaPlacement) {
+  if (placement.type === 'section') {
+    return `section:${placement.section}:${placement.position}`;
+  }
+  if (placement.type === 'instruction') {
+    return `instruction:${placement.instructionIndex}:${placement.position}`;
+  }
+  return placement.type;
+}
+
+function decodePlacement(value: string): RecipeMediaPlacement {
+  const [type, detail, position] = value.split(':');
+  if (type === 'section' && (detail === 'ingredients' || detail === 'notes') && (position === 'before' || position === 'after')) {
+    return { type, section: detail, position };
+  }
+  if (type === 'instruction' && (position === 'before' || position === 'after')) {
+    return { type, instructionIndex: Math.max(0, Number.parseInt(detail, 10) || 0), position };
+  }
+  return type === 'cover' ? { type } : { type: 'gallery' };
 }
 
 export function RecipeEditor({
@@ -44,6 +81,7 @@ export function RecipeEditor({
 }) {
   const [recipe, setRecipe] = useState(() => cloneRecipe(initialRecipe ?? createBlankRecipe()));
   const [ingredientPaste, setIngredientPaste] = useState('');
+  const [mediaPaste, setMediaPaste] = useState('');
   const validation = useMemo(() => validateRecipe(recipe), [recipe]);
 
   function patchRecipe(patch: Partial<RecipeV1>) {
@@ -80,6 +118,49 @@ export function RecipeEditor({
 
   function removeIngredient(index: number) {
     patchRecipe({ ingredients: recipe.ingredients.filter((_ingredient, ingredientIndex) => ingredientIndex !== index) });
+  }
+
+  function patchMedia(nextMedia: RecipeMedia[]) {
+    patchRecipe({ media: nextMedia, ...syncLegacyImages(nextMedia) });
+  }
+
+  function addMediaUris() {
+    const existingUris = new Set(recipe.media.map((item) => item.uri));
+    const available = Math.max(0, RECIPE_MEDIA_LIMIT - recipe.media.length);
+    const uris = mediaPaste.split(/\r?\n/).map((uri) => uri.trim()).filter((uri) => uri && !existingUris.has(uri)).slice(0, available);
+    if (!uris.length) {
+      return;
+    }
+    const hasCover = recipe.media.some((item) => item.placement.type === 'cover');
+    const added = uris.map((uri, index): RecipeMedia => ({
+      id: `media-${Date.now().toString(36)}-${index + 1}`,
+      uri,
+      alt: '',
+      caption: '',
+      placement: !hasCover && index === 0 ? { type: 'cover' } : { type: 'gallery' },
+    }));
+    patchMedia([...recipe.media, ...added]);
+    setMediaPaste('');
+  }
+
+  function updateMedia(index: number, patch: Partial<RecipeMedia>) {
+    patchMedia(recipe.media.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+  }
+
+  function updateMediaPlacement(index: number, placement: RecipeMediaPlacement) {
+    patchMedia(recipe.media.map((item, itemIndex) => {
+      if (itemIndex === index) {
+        return { ...item, placement };
+      }
+      if (placement.type === 'cover' && item.placement.type === 'cover') {
+        return { ...item, placement: { type: 'gallery' } };
+      }
+      return item;
+    }));
+  }
+
+  function removeMedia(index: number) {
+    patchMedia(recipe.media.filter((_item, itemIndex) => itemIndex !== index));
   }
 
   function completeRecipe() {
@@ -140,18 +221,6 @@ export function RecipeEditor({
           <label className="field field--wide">
             <span>Tags <small>comma separated</small></span>
             <input value={recipe.tags.join(', ')} onChange={(event) => patchRecipe({ tags: event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean) })} />
-          </label>
-          <label className="field field--wide">
-            <span>QDN image URIs <small>one per line; first is the cover</small></span>
-            <textarea
-              rows={4}
-              placeholder={'qdn://IMAGE/Name/cover\nqdn://IMAGE/Name/step-1'}
-              value={recipe.images.join('\n')}
-              onChange={(event) => {
-                const images = event.target.value.split('\n').map((image) => image.trim()).filter(Boolean);
-                patchRecipe({ image: images[0] ?? '', images });
-              }}
-            />
           </label>
         </section>
 
@@ -227,6 +296,63 @@ export function RecipeEditor({
           <textarea rows={9} value={recipe.instructions.join('\n')} onChange={(event) => patchRecipe({ instructions: event.target.value.split(/\r?\n/) })} />
           <h2 className="subheading">Notes</h2>
           <textarea rows={4} value={recipe.notes.join('\n')} onChange={(event) => patchRecipe({ notes: event.target.value.split(/\r?\n/) })} placeholder="Storage, substitutions, serving ideas…" />
+        </section>
+
+        <section className="form-card form-card--wide">
+          <h2>Images</h2>
+          <p className="helper">Paste one QDN image URI per line, then choose where each image appears. The first image becomes the cover by default. Up to {RECIPE_MEDIA_LIMIT} images are supported.</p>
+          <label className="field field--wide">
+            <span>Add QDN image URIs</span>
+            <textarea
+              rows={4}
+              placeholder={'qdn://IMAGE/Name/cover\nqdn://IMAGE/Name/step-1'}
+              value={mediaPaste}
+              onChange={(event) => setMediaPaste(event.target.value)}
+            />
+          </label>
+          <button className="button button--secondary media-add-button" type="button" disabled={recipe.media.length >= RECIPE_MEDIA_LIMIT} onClick={addMediaUris}>Add images</button>
+          <div className="media-editor-list">
+            {recipe.media.map((item, index) => (
+              <article className="media-editor" key={item.id}>
+                <div className="media-editor__preview">
+                  {item.uri ? <img src={recipeImageUrl(item.uri)} alt="" /> : <span>No preview</span>}
+                </div>
+                <div className="media-editor__fields">
+                  <label className="field field--wide">
+                    <span>QDN image URI</span>
+                    <input value={item.uri} onChange={(event) => updateMedia(index, { uri: event.target.value })} />
+                  </label>
+                  <label className="field">
+                    <span>Show this image</span>
+                    <select value={encodePlacement(item.placement)} onChange={(event) => updateMediaPlacement(index, decodePlacement(event.target.value))}>
+                      <option value="cover">Cover</option>
+                      <option value="gallery">General gallery</option>
+                      <option value="section:ingredients:before">Before Ingredients</option>
+                      <option value="section:ingredients:after">After Ingredients</option>
+                      {recipe.instructions.filter((instruction) => instruction.trim()).map((_instruction, stepIndex) => (
+                        <optgroup label={`Step ${stepIndex + 1}`} key={`step-${stepIndex}`}>
+                          <option value={`instruction:${stepIndex}:before`}>Before step {stepIndex + 1}</option>
+                          <option value={`instruction:${stepIndex}:after`}>After step {stepIndex + 1}</option>
+                        </optgroup>
+                      ))}
+                      <option value="section:notes:before">Before Notes</option>
+                      <option value="section:notes:after">After Notes</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Caption <small>optional</small></span>
+                    <input value={item.caption} onChange={(event) => updateMedia(index, { caption: event.target.value })} />
+                  </label>
+                  <label className="field">
+                    <span>Alt text <small>optional but recommended</small></span>
+                    <input value={item.alt} onChange={(event) => updateMedia(index, { alt: event.target.value })} />
+                  </label>
+                  <button className="text-button text-button--danger media-editor__remove" type="button" onClick={() => removeMedia(index)}>Remove image</button>
+                </div>
+              </article>
+            ))}
+            {!recipe.media.length ? <div className="empty-state">No images added yet.</div> : null}
+          </div>
         </section>
 
       </div>

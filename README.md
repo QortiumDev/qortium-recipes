@@ -47,12 +47,20 @@ confirmed numeric amounts; free-text entries such as `salt to taste` remain unch
 Known English units switch between singular and plural in scaled views; unknown and
 abbreviated unit labels remain as entered.
 
-Recipes may include an ordered gallery of up to 12 image URIs. The first image is the
-cover used by compatible clients, while the legacy singular `image` field remains in the
-v1 payload for older readers. Images should be published as their own QDN resources and
-properly attributed through the recipe's source fields.
+Recipes may include up to 24 placement-aware `media` objects. Each object carries an id,
+URI, alt text, caption, and one placement: the recipe cover, general gallery, before or
+after the ingredients or notes section, or before or after a zero-based instruction index.
+Invalid or out-of-range placements normalize to the general gallery so an image does not
+silently disappear.
 
-The app exports Schema.org `Recipe` JSON-LD for interchange. RecipeMD and website imports
+The legacy `image` and `images` fields remain in the v1 payload for older readers. New
+payloads synchronize them from all unique media URIs with the cover first. Legacy payloads
+without `media` normalize their first image to the cover and remaining images to the
+gallery. Images should be published as their own QDN resources and properly attributed
+through the recipe's source fields.
+
+The app exports Schema.org `Recipe` JSON-LD for interchange. General media becomes
+`Recipe.image`; instruction media becomes `HowToStep.image`. RecipeMD and website imports
 are possible future adapters, but arbitrary text parsing is deliberately best-effort and
 reviewed by the author.
 

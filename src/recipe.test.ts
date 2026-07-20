@@ -7,7 +7,9 @@ import {
   formatAmount,
   parseIngredientLine,
   parseIngredientLines,
+  RECIPE_MEDIA_LIMIT,
   recipeImages,
+  recipeMedia,
   recipeImageUrl,
   toSchemaOrgRecipe,
   validateRecipe,
@@ -156,6 +158,22 @@ describe('recipe validation and interchange', () => {
       'qdn://IMAGE/Cook/cover',
       'qdn://IMAGE/Cook/step-1',
     ]);
+    expect(validation.recipe?.media).toEqual([
+      {
+        id: 'media-cover',
+        uri: 'qdn://IMAGE/Cook/cover',
+        alt: '',
+        caption: '',
+        placement: { type: 'cover' },
+      },
+      {
+        id: 'media-gallery-1',
+        uri: 'qdn://IMAGE/Cook/step-1',
+        alt: '',
+        caption: '',
+        placement: { type: 'gallery' },
+      },
+    ]);
     expect(validation.recipe && recipeImages(validation.recipe)).toEqual(validation.recipe?.images);
     expect(validation.recipe && toSchemaOrgRecipe(validation.recipe).image).toEqual(validation.recipe?.images);
   });
@@ -167,8 +185,121 @@ describe('recipe validation and interchange', () => {
     recipe.ingredients = parseIngredientLines('1 cup oats');
     recipe.instructions = ['Cook.'];
     delete (recipe as Partial<RecipeV1>).images;
+    delete (recipe as Partial<RecipeV1>).media;
 
     expect(validateRecipe(recipe).recipe?.images).toEqual(['qdn://IMAGE/Cook/cover']);
+  });
+
+  it('normalizes placed media into legacy fields for older v1 readers', () => {
+    const recipe = createBlankRecipe();
+    recipe.name = 'Oatmeal';
+    recipe.ingredients = parseIngredientLines('1 cup oats');
+    recipe.instructions = ['Combine.', 'Cook.'];
+    recipe.media = [
+      {
+        id: 'step', uri: 'qdn://IMAGE/Cook/step', alt: 'Stirred oats', caption: '',
+        placement: { type: 'instruction', instructionIndex: 1, position: 'after' },
+      },
+      {
+        id: 'cover', uri: 'qdn://IMAGE/Cook/cover', alt: 'A bowl of oats', caption: 'Breakfast',
+        placement: { type: 'cover' },
+      },
+      {
+        id: 'duplicate', uri: 'qdn://IMAGE/Cook/step', alt: '', caption: '',
+        placement: { type: 'gallery' },
+      },
+    ];
+
+    const normalized = validateRecipe(recipe).recipe;
+    expect(normalized?.image).toBe('qdn://IMAGE/Cook/cover');
+    expect(normalized?.images).toEqual([
+      'qdn://IMAGE/Cook/cover',
+      'qdn://IMAGE/Cook/step',
+    ]);
+    expect(normalized && recipeImages(normalized)).toEqual(normalized?.images);
+  });
+
+  it('degrades invalid media placements to the visible general gallery', () => {
+    const recipe = createBlankRecipe();
+    recipe.name = 'Oatmeal';
+    recipe.ingredients = parseIngredientLines('1 cup oats');
+    recipe.instructions = ['Cook.'];
+    recipe.media = [
+      {
+        id: 'bad-step', uri: 'qdn://IMAGE/Cook/bad-step', alt: '', caption: '',
+        placement: { type: 'instruction', instructionIndex: 9, position: 'after' },
+      },
+      {
+        id: 'bad-section', uri: 'qdn://IMAGE/Cook/bad-section', alt: '', caption: '',
+        placement: { type: 'section', section: 'ingredients', position: 'before' },
+      },
+    ];
+    (recipe.media[1].placement as unknown as Record<string, unknown>).section = 'equipment';
+
+    const normalized = validateRecipe(recipe).recipe;
+    expect(normalized?.media.map((entry) => entry.placement)).toEqual([
+      { type: 'gallery' },
+      { type: 'gallery' },
+    ]);
+    expect(normalized && recipeMedia(normalized)).toHaveLength(2);
+  });
+
+  it('maps general media to Recipe images and placed media to HowToStep images', () => {
+    const recipe = createBlankRecipe();
+    recipe.name = 'Oatmeal';
+    recipe.ingredients = parseIngredientLines('1 cup oats');
+    recipe.instructions = ['Combine.', 'Cook.'];
+    recipe.media = [
+      {
+        id: 'cover', uri: 'qdn://IMAGE/Cook/cover', alt: '', caption: '',
+        placement: { type: 'cover' },
+      },
+      {
+        id: 'ingredients', uri: 'qdn://IMAGE/Cook/ingredients', alt: '', caption: '',
+        placement: { type: 'section', section: 'ingredients', position: 'after' },
+      },
+      {
+        id: 'step-before', uri: 'qdn://IMAGE/Cook/step-before', alt: '', caption: '',
+        placement: { type: 'instruction', instructionIndex: 1, position: 'before' },
+      },
+      {
+        id: 'step-after', uri: 'qdn://IMAGE/Cook/step-after', alt: '', caption: '',
+        placement: { type: 'instruction', instructionIndex: 1, position: 'after' },
+      },
+    ];
+
+    const normalized = validateRecipe(recipe).recipe!;
+    const exported = toSchemaOrgRecipe(normalized);
+    expect(exported.image).toEqual([
+      'qdn://IMAGE/Cook/cover',
+      'qdn://IMAGE/Cook/ingredients',
+    ]);
+    expect(exported.recipeInstructions).toEqual([
+      { '@type': 'HowToStep', text: 'Combine.', image: undefined },
+      {
+        '@type': 'HowToStep',
+        text: 'Cook.',
+        image: ['qdn://IMAGE/Cook/step-before', 'qdn://IMAGE/Cook/step-after'],
+      },
+    ]);
+  });
+
+  it('retains up to the documented media limit in new and legacy views', () => {
+    const recipe = createBlankRecipe();
+    recipe.name = 'Oatmeal';
+    recipe.ingredients = parseIngredientLines('1 cup oats');
+    recipe.instructions = ['Cook.'];
+    recipe.media = Array.from({ length: RECIPE_MEDIA_LIMIT + 3 }, (_, index) => ({
+      id: `photo-${index}`,
+      uri: `qdn://IMAGE/Cook/photo-${index}`,
+      alt: '',
+      caption: '',
+      placement: index === 0 ? { type: 'cover' as const } : { type: 'gallery' as const },
+    }));
+
+    const normalized = validateRecipe(recipe).recipe;
+    expect(normalized?.media).toHaveLength(RECIPE_MEDIA_LIMIT);
+    expect(normalized?.images).toHaveLength(RECIPE_MEDIA_LIMIT);
   });
 
   it('maps QDN image URIs to the active node resource route', () => {
