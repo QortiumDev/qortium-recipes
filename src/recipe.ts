@@ -1,8 +1,15 @@
-import type { RecipeIngredient, RecipeV1, RecipeValidation } from './types';
+import type {
+  RecipeIngredient,
+  RecipeMedia,
+  RecipeMediaPlacement,
+  RecipeV1,
+  RecipeValidation,
+} from './types';
 
 export const RECIPE_SCHEMA = 'qortium.recipes.recipe.v1' as const;
 export const RECIPE_IDENTIFIER_PREFIX = 'qrecipes.v1.r.';
-export const RECIPE_IMAGE_LIMIT = 12;
+export const RECIPE_MEDIA_LIMIT = 24;
+export const RECIPE_IMAGE_LIMIT = RECIPE_MEDIA_LIMIT;
 
 const UNICODE_FRACTIONS: Record<string, [number, number]> = {
   '½': [1, 2],
@@ -353,6 +360,7 @@ export function createBlankRecipe(): RecipeV1 {
     tags: [],
     image: '',
     images: [],
+    media: [],
     ingredients: [],
     instructions: [],
     notes: [],
@@ -385,6 +393,108 @@ function normalizeIngredient(value: unknown, index: number): RecipeIngredient | 
     item,
     scalable: value.scalable === true && amount !== null,
   };
+}
+
+function normalizeMediaPlacement(
+  value: unknown,
+  instructionCount: number,
+): RecipeMediaPlacement {
+  if (!isRecord(value)) {
+    return { type: 'gallery' };
+  }
+
+  if (value.type === 'cover') {
+    return { type: 'cover' };
+  }
+  if (value.type === 'gallery') {
+    return { type: 'gallery' };
+  }
+
+  const position = value.position === 'before' || value.position === 'after'
+    ? value.position
+    : null;
+  if (
+    value.type === 'section'
+    && (value.section === 'ingredients' || value.section === 'notes')
+    && position
+  ) {
+    return { type: 'section', section: value.section, position };
+  }
+
+  const instructionIndex = value.instructionIndex;
+  if (
+    value.type === 'instruction'
+    && position
+    && typeof instructionIndex === 'number'
+    && Number.isInteger(instructionIndex)
+    && instructionIndex >= 0
+    && instructionIndex < instructionCount
+  ) {
+    return { type: 'instruction', instructionIndex, position };
+  }
+
+  return { type: 'gallery' };
+}
+
+function uniqueMediaId(candidate: string, index: number, usedIds: Set<string>) {
+  const base = candidate.slice(0, 80) || `media-${index + 1}`;
+  let id = base;
+  let suffix = 2;
+  while (usedIds.has(id)) {
+    id = `${base.slice(0, 75)}-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(id);
+  return id;
+}
+
+function normalizeMediaEntry(
+  value: unknown,
+  index: number,
+  instructionCount: number,
+  usedIds: Set<string>,
+): RecipeMedia | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const uri = text(value.uri).slice(0, 500);
+  if (!uri) {
+    return null;
+  }
+
+  return {
+    id: uniqueMediaId(text(value.id), index, usedIds),
+    uri,
+    alt: text(value.alt).slice(0, 500),
+    caption: text(value.caption).slice(0, 1_000),
+    placement: normalizeMediaPlacement(value.placement, instructionCount),
+  };
+}
+
+function legacyMedia(value: Record<string, unknown>): RecipeMedia[] {
+  const legacyImage = text(value.image).slice(0, 500);
+  const uris = [...new Set([
+    legacyImage,
+    ...(Array.isArray(value.images) ? value.images.map((image) => text(image).slice(0, 500)) : []),
+  ].filter(Boolean))].slice(0, RECIPE_MEDIA_LIMIT);
+
+  return uris.map((uri, index) => ({
+    id: index === 0 ? 'media-cover' : `media-gallery-${index}`,
+    uri,
+    alt: '',
+    caption: '',
+    placement: index === 0 ? { type: 'cover' } : { type: 'gallery' },
+  }));
+}
+
+function legacyImagesFromMedia(media: RecipeMedia[]) {
+  const cover = media.find((entry) => entry.placement.type === 'cover');
+  const uris = [...new Set([
+    cover?.uri ?? '',
+    ...media.map((entry) => entry.uri),
+  ].filter(Boolean))].slice(0, RECIPE_MEDIA_LIMIT);
+  return { image: uris[0] ?? '', images: uris };
 }
 
 export function validateRecipe(value: unknown): RecipeValidation {
@@ -438,11 +548,18 @@ export function validateRecipe(value: unknown): RecipeValidation {
   const tags = Array.isArray(value.tags)
     ? [...new Set(value.tags.map(text).filter(Boolean))].slice(0, 20)
     : [];
-  const legacyImage = text(value.image).slice(0, 500);
-  const images = [...new Set([
-    legacyImage,
-    ...(Array.isArray(value.images) ? value.images.map((image) => text(image).slice(0, 500)) : []),
-  ].filter(Boolean))].slice(0, RECIPE_IMAGE_LIMIT);
+  const usedMediaIds = new Set<string>();
+  const normalizedMedia = Array.isArray(value.media)
+    ? value.media
+        .slice(0, RECIPE_MEDIA_LIMIT)
+        .map((entry, index) => normalizeMediaEntry(entry, index, instructions.length, usedMediaIds))
+        .filter((entry): entry is RecipeMedia => entry !== null)
+    : [];
+  const normalizedLegacyMedia = legacyMedia(value);
+  const media = normalizedMedia.length || !normalizedLegacyMedia.length
+    ? normalizedMedia
+    : normalizedLegacyMedia;
+  const legacyImages = legacyImagesFromMedia(media);
   const createdAt = Number(value.createdAt);
   const updatedAt = Number(value.updatedAt);
 
@@ -460,8 +577,9 @@ export function validateRecipe(value: unknown): RecipeValidation {
       category: text(value.category).slice(0, 80),
       cuisine: text(value.cuisine).slice(0, 80),
       tags,
-      image: images[0] ?? '',
-      images,
+      image: legacyImages.image,
+      images: legacyImages.images,
+      media,
       ingredients,
       instructions,
       notes: Array.isArray(value.notes) ? value.notes.map(text).filter(Boolean).slice(0, 100) : [],
@@ -486,7 +604,10 @@ function minutesToDuration(minutes: number | null) {
 }
 
 export function toSchemaOrgRecipe(recipe: RecipeV1, authorName?: string) {
-  const images = recipeImages(recipe);
+  const media = recipeMedia(recipe);
+  const images = [...new Set(media
+    .filter((entry) => entry.placement.type !== 'instruction')
+    .map((entry) => entry.uri))];
 
   return {
     '@context': 'https://schema.org',
@@ -506,17 +627,40 @@ export function toSchemaOrgRecipe(recipe: RecipeV1, authorName?: string) {
     recipeCuisine: recipe.cuisine || undefined,
     keywords: recipe.tags.length ? recipe.tags.join(', ') : undefined,
     recipeIngredient: recipe.ingredients.map((ingredient) => ingredient.text),
-    recipeInstructions: recipe.instructions.map((instruction) => ({
-      '@type': 'HowToStep',
-      text: instruction,
-    })),
+    recipeInstructions: recipe.instructions.map((instruction, instructionIndex) => {
+      const stepImages = [...new Set(media
+        .filter((entry) => (
+          entry.placement.type === 'instruction'
+          && entry.placement.instructionIndex === instructionIndex
+        ))
+        .map((entry) => entry.uri))];
+      return {
+        '@type': 'HowToStep',
+        text: instruction,
+        image: stepImages.length ? stepImages : undefined,
+      };
+    }),
     isBasedOn: recipe.source.url || undefined,
   };
 }
 
-export function recipeImages(recipe: Pick<RecipeV1, 'image' | 'images'>) {
+export function recipeMedia(
+  recipe: Pick<RecipeV1, 'image' | 'images'> & Partial<Pick<RecipeV1, 'media'>>,
+) {
+  if (Array.isArray(recipe.media) && recipe.media.length) {
+    return recipe.media;
+  }
+
+  return legacyMedia(recipe as unknown as Record<string, unknown>);
+}
+
+export function recipeImages(
+  recipe: Pick<RecipeV1, 'image' | 'images'> & Partial<Pick<RecipeV1, 'media'>>,
+) {
+  const mediaUris = Array.isArray(recipe.media) ? recipe.media.map((entry) => entry.uri) : [];
   return [...new Set([
     recipe.image,
+    ...mediaUris,
     ...(Array.isArray(recipe.images) ? recipe.images : []),
   ].map((image) => image.trim()).filter(Boolean))].slice(0, RECIPE_IMAGE_LIMIT);
 }
