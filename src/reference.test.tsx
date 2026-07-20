@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Reference, RECIPE_REFERENCE_EXAMPLES } from './Reference';
-import { RECIPE_IDENTIFIER_PREFIX, RECIPE_SCHEMA } from './recipe';
+import { RECIPE_IDENTIFIER_PREFIX, RECIPE_MEDIA_LIMIT, RECIPE_SCHEMA } from './recipe';
 import {
   RECIPE_FILENAME,
   RECIPE_MAX_BYTES,
@@ -26,12 +26,24 @@ describe('Recipes developer reference', () => {
       String(RECIPE_METADATA_DESCRIPTION_BYTES),
       String(RECIPE_METADATA_TAG_LIMIT),
       String(RECIPE_METADATA_TAG_BYTES),
+      String(RECIPE_MEDIA_LIMIT),
     ]) {
       expect(html).toContain(value);
     }
     expect(html).toContain('64-byte');
-    expect(html).toContain('ordered, de-duplicated gallery');
+    expect(html).toContain('all unique media URIs');
     expect(RECIPE_REFERENCE_EXAMPLES.recipe).toContain('"images"');
+    expect(RECIPE_REFERENCE_EXAMPLES.recipe).toContain('"media"');
+    expect(RECIPE_REFERENCE_EXAMPLES.recipe).toContain('"instructionIndex": 1');
+  });
+
+  it('documents placement-aware media and backward compatibility', () => {
+    expect(html).toContain('Media placement and compatibility');
+    expect(html).toContain('zero-based instruction index');
+    expect(html).toContain('Invalid placements normalize');
+    expect(html).toContain('older v1 readers still show every unique URI');
+    expect(RECIPE_REFERENCE_EXAMPLES.jsonLd).toContain("entry.placement.type === 'instruction'");
+    expect(RECIPE_REFERENCE_EXAMPLES.jsonLd).toContain('instructionIndex');
   });
 
   it('documents free-text preservation and conservative scaling', () => {

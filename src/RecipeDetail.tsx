@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { composeIngredientText, recipeImages, recipeImageUrl, toSchemaOrgRecipe } from './recipe';
-import type { PublishedRecipe, RecipeV1 } from './types';
+import { composeIngredientText, recipeImageUrl, recipeMedia, toSchemaOrgRecipe } from './recipe';
+import type { PublishedRecipe, RecipeMedia, RecipeV1 } from './types';
 
 function formatMinutes(minutes: number | null) {
   if (minutes === null) {
@@ -26,6 +26,23 @@ function downloadSchemaOrg(recipe: RecipeV1, publisher: string) {
   URL.revokeObjectURL(url);
 }
 
+function PlacedMedia({ items }: { items: RecipeMedia[] }) {
+  if (!items.length) {
+    return null;
+  }
+
+  return (
+    <div className="placed-media">
+      {items.map((item) => (
+        <figure className="placed-media__item" key={item.id}>
+          <img src={recipeImageUrl(item.uri)} alt={item.alt} />
+          {item.caption ? <figcaption>{item.caption}</figcaption> : null}
+        </figure>
+      ))}
+    </div>
+  );
+}
+
 export function RecipeDetail({
   canEdit,
   favorite,
@@ -46,10 +63,24 @@ export function RecipeDetail({
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const selectedServings = recipe.baseServings ? recipe.baseServings * factor : null;
   const totalMinutes = (recipe.prepMinutes ?? 0) + (recipe.cookMinutes ?? 0);
+  const allMedia = useMemo(() => recipeMedia(recipe), [recipe]);
+  // Validation normalizes unknown or unusable placements into the gallery.
+  const galleryMedia = useMemo(() => [
+    ...allMedia.filter((item) => item.placement.type === 'cover'),
+    ...allMedia.filter((item) => item.placement.type === 'gallery'),
+  ], [allMedia]);
   const imageUrls = useMemo(
-    () => recipeImages(recipe).map(recipeImageUrl).filter(Boolean),
-    [recipe],
+    () => galleryMedia.map((item) => recipeImageUrl(item.uri)).filter(Boolean),
+    [galleryMedia],
   );
+
+  function sectionMedia(section: 'ingredients' | 'notes', position: 'before' | 'after') {
+    return allMedia.filter((item) => item.placement.type === 'section' && item.placement.section === section && item.placement.position === position);
+  }
+
+  function instructionMedia(instructionIndex: number, position: 'before' | 'after') {
+    return allMedia.filter((item) => item.placement.type === 'instruction' && item.placement.instructionIndex === instructionIndex && item.placement.position === position);
+  }
 
   useEffect(() => {
     setActiveImageIndex(0);
@@ -85,8 +116,9 @@ export function RecipeDetail({
             <img
               className="recipe-hero"
               src={imageUrls[activeImageIndex] ?? imageUrls[0]}
-              alt={`${recipe.name}, photo ${activeImageIndex + 1} of ${imageUrls.length}`}
+              alt={galleryMedia[activeImageIndex]?.alt || `${recipe.name}, photo ${activeImageIndex + 1} of ${imageUrls.length}`}
             />
+            {galleryMedia[activeImageIndex]?.caption ? <p className="recipe-gallery__caption">{galleryMedia[activeImageIndex].caption}</p> : null}
             {imageUrls.length > 1 ? (
               <div className="recipe-gallery__thumbnails" role="list">
                 {imageUrls.map((imageUrl, index) => (
@@ -125,6 +157,7 @@ export function RecipeDetail({
 
         <div className="recipe-columns">
           <section>
+            <PlacedMedia items={sectionMedia('ingredients', 'before')} />
             <div className="section-title-row">
               <h2>Ingredients</h2>
               <div className="scale-controls" aria-label="Recipe scale">
@@ -154,20 +187,31 @@ export function RecipeDetail({
                 </li>
               ))}
             </ul>
+            <PlacedMedia items={sectionMedia('ingredients', 'after')} />
           </section>
 
           <section>
             <h2>Directions</h2>
             <ol className="instruction-list">
-              {recipe.instructions.map((instruction, index) => <li key={`${index}-${instruction}`}>{instruction}</li>)}
+              {recipe.instructions.map((instruction, index) => (
+                <li key={`${index}-${instruction}`}>
+                  <div className="instruction-list__content">
+                    <PlacedMedia items={instructionMedia(index, 'before')} />
+                    <p>{instruction}</p>
+                    <PlacedMedia items={instructionMedia(index, 'after')} />
+                  </div>
+                </li>
+              ))}
             </ol>
           </section>
         </div>
 
-        {recipe.notes.length ? (
+        {recipe.notes.length || sectionMedia('notes', 'before').length || sectionMedia('notes', 'after').length ? (
           <section className="notes-section">
+            <PlacedMedia items={sectionMedia('notes', 'before')} />
             <h2>Notes</h2>
             {recipe.notes.map((note, index) => <p key={`${index}-${note}`}>{note}</p>)}
+            <PlacedMedia items={sectionMedia('notes', 'after')} />
           </section>
         ) : null}
 

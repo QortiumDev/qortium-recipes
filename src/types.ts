@@ -85,6 +85,28 @@ export type RecipeSource = {
   url: string;
 };
 
+export type RecipeMediaPlacement =
+  | { type: 'cover' }
+  | { type: 'gallery' }
+  | {
+      type: 'section';
+      section: 'ingredients' | 'notes';
+      position: 'before' | 'after';
+    }
+  | {
+      type: 'instruction';
+      instructionIndex: number;
+      position: 'before' | 'after';
+    };
+
+export type RecipeMedia = {
+  id: string;
+  uri: string;
+  alt: string;
+  caption: string;
+  placement: RecipeMediaPlacement;
+};
+
 export type RecipeV1 = {
   schema: 'qortium.recipes.recipe.v1';
   id: string;
@@ -99,6 +121,7 @@ export type RecipeV1 = {
   tags: string[];
   image: string;
   images: string[];
+  media: RecipeMedia[];
   ingredients: RecipeIngredient[];
   instructions: string[];
   notes: string[];

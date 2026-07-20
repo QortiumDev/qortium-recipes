@@ -1,7 +1,12 @@
 // Intentionally outside localization: public protocol references stay always-English.
 import { useState } from 'react';
 import { copyTextToClipboard } from './clipboard';
-import { RECIPE_IDENTIFIER_PREFIX, RECIPE_IMAGE_LIMIT, RECIPE_SCHEMA } from './recipe';
+import {
+  RECIPE_IDENTIFIER_PREFIX,
+  RECIPE_IMAGE_LIMIT,
+  RECIPE_MEDIA_LIMIT,
+  RECIPE_SCHEMA,
+} from './recipe';
 import {
   RECIPE_FILENAME,
   RECIPE_MAX_BYTES,
@@ -30,7 +35,31 @@ export const RECIPE_REFERENCE_EXAMPLES = {
     image: 'qdn://IMAGE/Cook/lentil-soup',
     images: [
       'qdn://IMAGE/Cook/lentil-soup',
+      'qdn://IMAGE/Cook/lentil-soup-ingredients',
       'qdn://IMAGE/Cook/lentil-soup-step-1',
+    ],
+    media: [
+      {
+        id: 'finished-soup',
+        uri: 'qdn://IMAGE/Cook/lentil-soup',
+        alt: 'A bowl of lentil soup.',
+        caption: 'Finished lentil soup.',
+        placement: { type: 'cover' },
+      },
+      {
+        id: 'ingredients',
+        uri: 'qdn://IMAGE/Cook/lentil-soup-ingredients',
+        alt: 'Ingredients arranged on a counter.',
+        caption: '',
+        placement: { type: 'section', section: 'ingredients', position: 'after' },
+      },
+      {
+        id: 'simmer',
+        uri: 'qdn://IMAGE/Cook/lentil-soup-step-1',
+        alt: 'Lentil soup simmering in a pot.',
+        caption: 'Simmer until the lentils are tender.',
+        placement: { type: 'instruction', instructionIndex: 1, position: 'after' },
+      },
     ],
     ingredients: [
       { id: 'lentils', text: '1 1/2 cups lentils', amount: 1.5, amountMax: null, unit: 'cups', item: 'lentils', scalable: true },
@@ -135,7 +164,9 @@ const jsonLd = {
   name: recipe.name,
   description: recipe.description || undefined,
   author: resource.name ? { '@type': 'Person', name: resource.name } : undefined,
-  image: recipe.images?.length ? recipe.images : (recipe.image || undefined),
+  image: recipe.media
+    ?.filter((entry) => entry.placement.type !== 'instruction')
+    .map((entry) => entry.uri),
   prepTime: duration(recipe.prepMinutes),
   cookTime: duration(recipe.cookMinutes),
   totalTime: recipe.prepMinutes != null || recipe.cookMinutes != null
@@ -148,8 +179,13 @@ const jsonLd = {
   recipeCuisine: recipe.cuisine || undefined,
   keywords: recipe.tags.length ? recipe.tags.join(', ') : undefined,
   recipeIngredient: recipe.ingredients.map((entry) => entry.text),
-  recipeInstructions: recipe.instructions.map((text) => ({
-    '@type': 'HowToStep', text,
+  recipeInstructions: recipe.instructions.map((text, instructionIndex) => ({
+    '@type': 'HowToStep',
+    text,
+    image: recipe.media
+      ?.filter((entry) => entry.placement.type === 'instruction'
+        && entry.placement.instructionIndex === instructionIndex)
+      .map((entry) => entry.uri),
   })),
   isBasedOn: recipe.source.url || undefined,
 };`,
@@ -205,6 +241,7 @@ export function Reference() {
       <nav aria-label="Developer reference sections" className="reference-toc">
         <a href="#reference-schema">Schema</a>
         <a href="#reference-fields">Fields</a>
+        <a href="#reference-media">Media</a>
         <a href="#reference-scaling">Scaling</a>
         <a href="#reference-qdn">QDN lifecycle</a>
         <a href="#reference-bridge">Bridge</a>
@@ -251,7 +288,9 @@ export function Reference() {
               <tr><td><code>prepMinutes</code>, <code>cookMinutes</code></td><td>Optional non-negative numbers.</td></tr>
               <tr><td><code>tags</code></td><td>Trimmed, de-duplicated payload tags; at most 20 retained.</td></tr>
               <tr><td><code>notes</code></td><td>Optional public notes; at most 100 non-empty entries retained.</td></tr>
-              <tr><td><code>image</code>, <code>images</code></td><td><code>image</code> is the backward-compatible cover URI. <code>images</code> is the ordered, de-duplicated gallery of at most {RECIPE_IMAGE_LIMIT} URIs; the cover is normalized to its first entry.</td></tr>
+              <tr><td><code>media</code></td><td>Preferred placement-aware list of at most {RECIPE_MEDIA_LIMIT} media objects. Each has <code>id</code>, <code>uri</code>, <code>alt</code>, <code>caption</code>, and a placement. Invalid placements normalize to <code>gallery</code> so their images stay visible.</td></tr>
+              <tr><td><code>media[].placement</code></td><td><code>cover</code>; <code>gallery</code>; before/after the <code>ingredients</code> or <code>notes</code> section; or before/after a zero-based <code>instructionIndex</code>.</td></tr>
+              <tr><td><code>image</code>, <code>images</code></td><td>Backward-compatible fields for older v1 readers. <code>image</code> is the cover URI and <code>images</code> contains all unique media URIs, cover first, up to {RECIPE_IMAGE_LIMIT}. A legacy payload without <code>media</code> upgrades its first image to <code>cover</code> and the rest to <code>gallery</code>.</td></tr>
               <tr><td><code>source</code></td><td>Optional attribution name and URL; no private credentials.</td></tr>
               <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>Positive epoch milliseconds; invalid values normalize to the read time.</td></tr>
             </tbody>
@@ -261,6 +300,31 @@ export function Reference() {
           <strong>App payload ceiling: {RECIPE_MAX_BYTES.toLocaleString()} UTF-8 bytes.</strong>
           <p>This matches the current Recipes fetch ceiling; it is not presented as a universal Core publish limit.</p>
         </aside>
+      </section>
+
+      <section className="reference-section" id="reference-media">
+        <header><p className="eyebrow">Placement-aware images</p><h2>Media placement and compatibility</h2></header>
+        <div className="reference-grid">
+          <article className="reference-card">
+            <h3>General and contextual images</h3>
+            <p>
+              Use <code>cover</code> for the primary image and <code>gallery</code> for a
+              general recipe gallery. Section placements attach media before or after the
+              ingredients or notes. Instruction placements attach media before or after a
+              zero-based instruction index. Captions and accessible alt text travel with
+              each media item.
+            </p>
+          </article>
+          <article className="reference-card">
+            <h3>Additive v1 compatibility</h3>
+            <p>
+              Publishers keep <code>image</code> and <code>images</code> synchronized from
+              media so older v1 readers still show every unique URI. Readers upgrade legacy
+              image fields when media is absent. Unknown, malformed, or out-of-range
+              placements become general gallery items instead of disappearing.
+            </p>
+          </article>
+        </div>
       </section>
 
       <section className="reference-section" id="reference-scaling">
