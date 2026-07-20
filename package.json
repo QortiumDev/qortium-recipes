@@ -1,6 +1,6 @@
 {
   "name": "qortium-recipes",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "private": true,
   "license": "0BSD",
   "description": "Publish, browse, and scale community recipes on QDN.",

@@ -1,3 +1,5 @@
+import { RECIPE_IDENTIFIER_PREFIX } from './recipe';
+
 export type RecipeRouteView = 'browse' | 'developers' | 'editor' | 'recipe';
 
 export type RecipeRoute =
@@ -87,6 +89,32 @@ export function subscribeToRecipeRoute(
   const onPopState = () => onRoute(parseRecipeRoute(target.location.search));
   target.addEventListener('popstate', onPopState);
   return () => target.removeEventListener('popstate', onPopState);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Recipe targets supplied by Qortium Home when a link re-enters an already-open
+// tab. Values are validated here before they reach routing state: a target can
+// open a published recipe, but it cannot become an arbitrary QDN fetch.
+export function parseOpenAppTargetMessage(value: unknown): RecipeRoute | null {
+  if (!isRecord(value) || value.action !== 'OPEN_APP_TARGET' || value.requestedHandler !== 'UI' || !isRecord(value.query)) {
+    return null;
+  }
+
+  const { author, recipe } = value.query;
+  if (typeof author !== 'string' || typeof recipe !== 'string') {
+    return null;
+  }
+
+  const name = author.trim();
+  const identifier = recipe.trim();
+  if (!name || !identifier.startsWith(RECIPE_IDENTIFIER_PREFIX)) {
+    return null;
+  }
+
+  return { view: 'recipe', identifier, name };
 }
 
 function resolveLocation(location?: LocationLike): LocationLike {
