@@ -13,6 +13,7 @@ import { getBridgeState, qdnRequest } from './qdnRequest';
 import {
   canEditResource,
   fetchPublishedRecipe,
+  fetchRecipeResource,
   loadAccountContext,
   publishRecipe,
   requireTransactionSignature,
@@ -20,11 +21,13 @@ import {
   waitForRecipeReady,
 } from './qdnRecipes';
 import { buildRecipeIdentifier } from './recipe';
+import { copyTextToClipboard } from './clipboard';
 import {
+  buildRecipeLink,
   navigateRecipeRoute,
   parseRecipeRoute,
   subscribeToRecipeRoute,
-  type RecipeRouteView,
+  type RecipeRoute,
 } from './recipeRoute';
 import {
   deleteDraft,
@@ -43,7 +46,9 @@ import type {
   RecipeV1,
 } from './types';
 
-type View = 'browse' | 'detail' | 'developers' | 'editor';
+function errorText(value: unknown) {
+  return value instanceof Error ? value.message : String(value);
+}
 
 function hasAction(state: BridgeState | null, action: string) {
   return !!state?.actions.some((candidate) => candidate.toUpperCase() === action.toUpperCase());
@@ -64,7 +69,7 @@ function metadataTitle(resource: QdnResource) {
 }
 
 export function App() {
-  const [view, setView] = useState<View>(() => parseRecipeRoute(window.location.search));
+  const [route, setRoute] = useState<RecipeRoute>(() => parseRecipeRoute(window.location.search));
   const [, setDisplaySettings] = useState(getInitialDisplaySettings);
   const [bridgeState, setBridgeState] = useState<BridgeState | null>(null);
   const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null);
@@ -82,6 +87,7 @@ export function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const view = route.view;
   const canPublish =
     !!publishName &&
     hasAction(bridgeState, 'PUBLISH_QDN_RESOURCE');
@@ -98,10 +104,16 @@ export function App() {
     });
   }
 
-  function showRoute(next: RecipeRouteView, replace = false) {
+  function showRoute(next: RecipeRoute, replace = false) {
     navigateRecipeRoute(next, replace);
-    setView(next);
+    setRoute(next);
     window.scrollTo({ top: 0 });
+  }
+
+  function recipeRouteFor(resource: QdnResource): RecipeRoute | null {
+    return resource.identifier
+      ? { view: 'recipe', name: resource.name, identifier: resource.identifier }
+      : null;
   }
 
   async function refreshResources(search = query) {
@@ -165,7 +177,8 @@ export function App() {
         ...(event as CustomEvent<Record<string, unknown>>).detail,
       });
     };
-    const unsubscribeRoute = subscribeToRecipeRoute(setView);
+    // Back/Forward only re-derives state from the URL; it must not write history.
+    const unsubscribeRoute = subscribeToRecipeRoute(setRoute);
 
     window.addEventListener('message', onMessage);
     window.addEventListener('qortiumHomeSettingsChanged', onSettingsChanged);
@@ -175,6 +188,47 @@ export function App() {
       unsubscribeRoute();
     };
   }, []);
+
+  // Load whatever recipe the URL points at, whether that URL arrived from a
+  // shared link, a reload, or a Back/Forward step.
+  useEffect(() => {
+    if (route.view !== 'recipe') {
+      return;
+    }
+    const { identifier, name } = route;
+    if (selected?.resource.name === name && selected?.resource.identifier === identifier) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setError('');
+    (async () => {
+      try {
+        const resource = await fetchRecipeResource(name, identifier);
+        const published = await fetchPublishedRecipe(resource);
+        if (!cancelled) {
+          setSelected(published);
+          window.scrollTo({ top: 0 });
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(`Could not open the linked recipe. ${errorText(loadError)}`);
+          // Replace the dead target so Back does not land back on it.
+          setSelected(null);
+          showRoute({ view: 'browse' }, true);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [route, selected]);
 
   async function search(event: FormEvent) {
     event.preventDefault();
@@ -190,16 +244,20 @@ export function App() {
   }
 
   async function openResource(resource: QdnResource) {
+    const target = recipeRouteFor(resource);
+    if (!target) {
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
       const published = await fetchPublishedRecipe(resource);
+      // Seed the selection before routing so the deep-link effect sees a match
+      // and does not refetch what we already hold.
       setSelected(published);
-      setView('detail');
-      navigateRecipeRoute('browse', true);
-      window.scrollTo({ top: 0 });
+      showRoute(target);
     } catch (loadError) {
-      setError(`Could not open ${metadataTitle(resource)}. ${loadError instanceof Error ? loadError.message : String(loadError)}`);
+      setError(`Could not open ${metadataTitle(resource)}. ${errorText(loadError)}`);
     } finally {
       setIsLoading(false);
     }
@@ -208,7 +266,7 @@ export function App() {
   function beginNewRecipe() {
     setEditingRecipe(null);
     setEditingResource(null);
-    showRoute('editor');
+    showRoute({ view: 'editor' });
   }
 
   function editPublished() {
@@ -217,20 +275,20 @@ export function App() {
     }
     setEditingRecipe(selected.recipe);
     setEditingResource(selected.resource);
-    showRoute('editor');
+    showRoute({ view: 'editor' });
   }
 
   function editDraft(draft: RecipeV1) {
     setEditingRecipe(draft);
     setEditingResource(null);
-    showRoute('editor');
+    showRoute({ view: 'editor' });
   }
 
   function handleSaveDraft(recipe: RecipeV1) {
     saveDraft(recipe);
     setDrafts(loadDrafts());
     setNotice(`Saved “${recipe.name || 'Untitled recipe'}” on this device.`);
-    showRoute('browse');
+    showRoute({ view: 'browse' });
   }
 
   async function handlePublish(recipe: RecipeV1) {
@@ -252,7 +310,7 @@ export function App() {
         saveDraft(publication.payload);
         setDrafts(loadDrafts());
         setNotice('The publish request was submitted, but READY was not confirmed yet. The local draft was kept.');
-        showRoute('browse', true);
+        showRoute({ view: 'browse' }, true);
         return;
       }
 
@@ -262,8 +320,8 @@ export function App() {
       const published = await fetchPublishedRecipe(resource);
       setSelected(published);
       setNotice(`Published “${recipe.name}” under ${publishName}.`);
-      navigateRecipeRoute('browse', true);
-      setView('detail');
+      // Replace, not push: Back from a fresh publish should not re-enter the editor.
+      showRoute(recipeRouteFor(resource) ?? { view: 'browse' }, true);
     } catch (publishError) {
       saveDraft(recipe);
       setDrafts(loadDrafts());
@@ -286,6 +344,20 @@ export function App() {
     }
     setFavorites(next);
     saveFavorites(next);
+  }
+
+  async function copyRecipeLink() {
+    if (!selected?.resource.identifier) {
+      return;
+    }
+    const link = buildRecipeLink(selected.resource.name, selected.resource.identifier);
+    setError('');
+    // On failure show the raw link rather than an error the user cannot act on.
+    setNotice(
+      (await copyTextToClipboard(link))
+        ? 'Recipe link copied.'
+        : `Copy was blocked. Recipe link: ${link}`,
+    );
   }
 
   function isFavorite(resource: QdnResource) {
@@ -318,7 +390,7 @@ export function App() {
         <button
           aria-current={view === 'browse' ? 'page' : undefined}
           className={view === 'browse' ? 'workspace-tab is-active' : 'workspace-tab'}
-          onClick={() => showRoute('browse')}
+          onClick={() => showRoute({ view: 'browse' })}
           type="button"
         >
           Browse
@@ -326,7 +398,7 @@ export function App() {
         <button
           aria-current={view === 'developers' ? 'page' : undefined}
           className={view === 'developers' ? 'workspace-tab is-active' : 'workspace-tab'}
-          onClick={() => showRoute('developers')}
+          onClick={() => showRoute({ view: 'developers' })}
           type="button"
         >
           Developers
@@ -358,8 +430,9 @@ export function App() {
           initialRecipe={editingRecipe}
           isPublishing={isPublishing}
           onCancel={() => {
-            navigateRecipeRoute('browse', true);
-            setView(selected ? 'detail' : 'browse');
+            // Return to the recipe the editor was opened from, not to Browse.
+            const origin = selected ? recipeRouteFor(selected.resource) : null;
+            showRoute(origin ?? { view: 'browse' }, true);
           }}
           onPublish={handlePublish}
           onSaveDraft={handleSaveDraft}
@@ -369,18 +442,32 @@ export function App() {
     );
   }
 
-  if (view === 'detail' && selected) {
+  if (view === 'recipe' && selected) {
     return (
       <main className="app-shell">
         {notice ? <div className="global-notice global-notice--success">{notice}</div> : null}
         <RecipeDetail
           canEdit={canEditResource(selected.resource, accountContext.writableNames)}
           favorite={selectedFavorite}
-          onBack={() => setView('browse')}
+          onBack={() => showRoute({ view: 'browse' })}
+          onCopyLink={copyRecipeLink}
           onEdit={editPublished}
           onToggleFavorite={toggleFavorite}
           published={selected}
         />
+      </main>
+    );
+  }
+
+  if (view === 'recipe') {
+    // Deep link still resolving; `error` covers the target-not-found case.
+    return (
+      <main className="app-shell">
+        <div className="workspace">
+          {workspaceHeader}
+          {error ? <div className="global-notice global-notice--error">{error}</div> : null}
+          {isLoading ? <div className="global-notice">Opening recipe…</div> : null}
+        </div>
       </main>
     );
   }
@@ -467,7 +554,7 @@ export function App() {
         <footer className="app-footer">
           Recipes {__APP_VERSION__} · Data uses <code>qortium.recipes.recipe.v1</code> under{' '}
           <code>JSON/&lt;author&gt;/{buildRecipeIdentifier('<id>')}</code>.{' '}
-          <button className="footer-link" type="button" onClick={() => showRoute('developers')}>
+          <button className="footer-link" type="button" onClick={() => showRoute({ view: 'developers' })}>
             Developer reference
           </button>
         </footer>

@@ -108,6 +108,43 @@ export async function searchRecipeResources(query = '', offset = 0, limit = 24):
     : [];
 }
 
+// Resolve one resource for a deep link, where only name + identifier are known.
+// FETCH_QDN_RESOURCE needs no more than that, but a targeted search gives the
+// detail view the same metadata and status a browse hit carries.
+export async function fetchRecipeResource(name: string, identifier: string): Promise<QdnResource> {
+  if (!identifier.startsWith(RECIPE_IDENTIFIER_PREFIX)) {
+    throw new Error(`${identifier} is not a recipe identifier.`);
+  }
+
+  try {
+    const result = await qdnRequest<unknown>({
+      action: 'SEARCH_QDN_RESOURCES',
+      excludeBlocked: true,
+      identifier,
+      includeMetadata: true,
+      includeStatus: true,
+      limit: 1,
+      mode: 'ALL',
+      name,
+      prefix: false,
+      service: RECIPE_SERVICE,
+    });
+    const match = Array.isArray(result)
+      ? result.find(
+          (resource): resource is QdnResource =>
+            isRecord(resource) && resource.name === name && resource.identifier === identifier,
+        )
+      : undefined;
+    if (match) {
+      return match;
+    }
+  } catch {
+    // A failed lookup should not block the fetch below; metadata is optional.
+  }
+
+  return { identifier, name, service: RECIPE_SERVICE };
+}
+
 export async function fetchPublishedRecipe(resource: QdnResource): Promise<PublishedRecipe> {
   const payload = await qdnRequest<unknown>({
     action: 'FETCH_QDN_RESOURCE',

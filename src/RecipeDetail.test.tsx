@@ -33,6 +33,7 @@ describe('RecipeDetail image gallery', () => {
         canEdit={false}
         favorite={false}
         onBack={vi.fn()}
+        onCopyLink={vi.fn()}
         onEdit={vi.fn()}
         onToggleFavorite={vi.fn()}
         published={publishedRecipe()}

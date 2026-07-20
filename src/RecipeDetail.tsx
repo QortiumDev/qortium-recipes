@@ -30,6 +30,7 @@ export function RecipeDetail({
   canEdit,
   favorite,
   onBack,
+  onCopyLink,
   onEdit,
   onToggleFavorite,
   published,
@@ -37,6 +38,7 @@ export function RecipeDetail({
   canEdit: boolean;
   favorite: boolean;
   onBack: () => void;
+  onCopyLink: () => void;
   onEdit: () => void;
   onToggleFavorite: () => void;
   published: PublishedRecipe;
@@ -69,6 +71,9 @@ export function RecipeDetail({
           <span aria-hidden="true" className="back-arrow">←</span> Browse
         </button>
         <div>
+          <button className="button button--ghost" type="button" onClick={onCopyLink}>
+            Copy link
+          </button>
           <button className="button button--ghost" type="button" onClick={() => downloadSchemaOrg(recipe, resource.name)}>
             Export JSON-LD
           </button>
