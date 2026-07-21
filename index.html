@@ -5,6 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="./favicon.ico" sizes="any" />
     <title>Recipes</title>
+    <script>
+      /*
+        Samsung Family Hub appliances run with Tizen's system-wide accessibility
+        colour inversion enabled, which inverts this page along with everything
+        else on the panel. Marking the client lets the stylesheet invert once
+        more, cancelling it so the app renders in its intended colours.
+
+        Inline and synchronous on purpose: this must land before first paint, or
+        the app flashes inverted before the app bundle loads.
+
+        Detection is by user agent because the fridge leaves us nothing better.
+        `(inverted-colors)` parses on its Chrome 108 engine but evaluates to
+        neither `inverted` nor `none`, so it cannot be used, and the panel
+        reports `pointer: coarse` and `hover: none` as false despite being a
+        touchscreen. Verified on Tizen 7.0 / Family Hub 10.0, 2026-07-20.
+      */
+      try {
+        if (/SAMSUNG Family Hub/i.test(navigator.userAgent)) {
+          document.documentElement.setAttribute("data-qr-client", "family-hub");
+        }
+      } catch (e) {
+        /* Detection is an enhancement; never block rendering on it. */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
