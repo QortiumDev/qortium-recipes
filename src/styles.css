@@ -1672,38 +1672,3 @@ h2 {
     transform: none;
   }
 }
-
-/* Samsung Family Hub display correction.
-
-   The appliance runs with Tizen's system-wide accessibility colour inversion
-   on, so the OS inverts this page along with the rest of the panel. Inverting
-   once more cancels it, and the app renders in its intended colours while the
-   surrounding fridge UI stays dark.
-
-   The cancellation is exact, not approximate: the panel performs a plain RGB
-   inversion, confirmed on-device 2026-07-20 (a black swatch reads white, red
-   reads cyan), and invert(1) is its own inverse. Photographs therefore come
-   back to true colour without any pre-processing.
-
-   Filtering the root element is safe here only because this app uses no
-   position: fixed - a filtered ancestor becomes the containing block for fixed
-   descendants, which would silently reparent them. Check that before adding
-   fixed positioning, or scope the filter to a wrapper instead. The two
-   position: sticky rules are unaffected, as sticky resolves against its scroll
-   container rather than the viewport.
-
-   The background is restated so the canvas outside the root box matches the
-   filtered page instead of showing an uninverted strip on overscroll.
-
-   The filter is held in a custom property because the CSS minifier rewrites
-   `filter: invert(1)` into the bare `filter: invert()`. The two are equivalent
-   per spec - the omitted argument defaults to 1 - but this has to run on a 2022
-   engine, and the whole correction silently does nothing if that engine
-   disagrees. Minifiers leave custom property values alone, so the explicit
-   argument survives the build. */
-:root[data-qr-client='family-hub'] {
-  --qr-display-filter: invert(1);
-
-  background-color: var(--qr-page);
-  filter: var(--qr-display-filter);
-}
