@@ -2,10 +2,24 @@
 import { useState } from 'react';
 import { copyTextToClipboard } from './clipboard';
 import {
+  RECIPE_CATEGORY_MAX_CHARS,
+  RECIPE_DESCRIPTION_MAX_CHARS,
+  RECIPE_ID_MAX_LENGTH,
+  RECIPE_ID_MIN_LENGTH,
   RECIPE_IDENTIFIER_PREFIX,
   RECIPE_IMAGE_LIMIT,
+  RECIPE_INSTRUCTION_LIMIT,
+  RECIPE_MEDIA_ALT_MAX_CHARS,
+  RECIPE_MEDIA_CAPTION_MAX_CHARS,
   RECIPE_MEDIA_LIMIT,
+  RECIPE_MEDIA_URI_MAX_CHARS,
+  RECIPE_NAME_MAX_BYTES,
+  RECIPE_NOTE_LIMIT,
   RECIPE_SCHEMA,
+  RECIPE_SOURCE_NAME_MAX_CHARS,
+  RECIPE_SOURCE_URL_MAX_CHARS,
+  RECIPE_TAG_LIMIT,
+  RECIPE_YIELD_MAX_CHARS,
 } from './recipe';
 import {
   RECIPE_FILENAME,
@@ -14,8 +28,10 @@ import {
   RECIPE_METADATA_TAG_BYTES,
   RECIPE_METADATA_TAG_LIMIT,
   RECIPE_METADATA_TITLE_BYTES,
+  RECIPE_SEARCH_PAGE_SIZE,
   RECIPE_SERVICE,
 } from './qdnRecipes';
+import { ReferenceNavigation } from './ReferenceNavigation';
 
 const SAMPLE_ID = 'mexample8recipe';
 
@@ -93,7 +109,7 @@ const capabilities = {
   includeMetadata: true,
   includeStatus: true,
   excludeBlocked: true,
-  limit: 24,
+  limit: ${RECIPE_SEARCH_PAGE_SIZE},
   offset: 0,
 });`,
   fetch: `const payload = await qdnRequest({
@@ -193,12 +209,26 @@ const jsonLd = {
 
 type ExampleName = keyof typeof RECIPE_REFERENCE_EXAMPLES;
 
+type CopyState = 'copied' | 'idle' | 'unavailable';
+
+export function copyStatusText(state: CopyState, label: string) {
+  if (state === 'copied') {
+    return `Copied ${label}.`;
+  }
+  if (state === 'unavailable') {
+    return 'Clipboard unavailable. Select the code and copy it manually.';
+  }
+  return 'Code can be selected for manual copying.';
+}
+
 function CodeExample({ id, label }: { id: ExampleName; label: string }) {
-  const [state, setState] = useState<'copied' | 'idle' | 'unavailable'>('idle');
+  const [state, setState] = useState<CopyState>('idle');
   const code = RECIPE_REFERENCE_EXAMPLES[id];
 
-  async function copy() {
+  async function copy(button: HTMLButtonElement) {
     setState(await copyTextToClipboard(code) ? 'copied' : 'unavailable');
+    // Keep focus on the control; the visible status paragraph announces the result.
+    button.focus({ preventScroll: true });
   }
 
   return (
@@ -206,29 +236,27 @@ function CodeExample({ id, label }: { id: ExampleName; label: string }) {
       <header>
         <strong>{label}</strong>
         <button
-          aria-label={`${state === 'copied' ? 'Copied' : 'Copy'} ${label}`}
-          className="button button--ghost"
-          onClick={() => void copy()}
+          aria-label={`Copy ${label}`}
+          className="button button--ghost reference-code__copy"
+          onClick={(event) => void copy(event.currentTarget)}
           type="button"
         >
           {state === 'copied' ? 'Copied' : 'Copy'}
         </button>
       </header>
-      <pre><code>{code}</code></pre>
-      <span aria-live="polite" className="sr-only">
-        {state === 'copied'
-          ? `${label} copied.`
-          : state === 'unavailable'
-            ? 'Clipboard access is unavailable. Select the code manually.'
-            : ''}
-      </span>
+      <p aria-live="polite" className="reference-copy-status" role="status">
+        {copyStatusText(state, label)}
+      </p>
+      <pre aria-label={label} tabIndex={0}><code>{code}</code></pre>
     </div>
   );
 }
 
 export function Reference() {
   return (
-    <article className="developer-reference">
+    // The public contract intentionally stays English regardless of Home's
+    // language and direction, so it must not inherit a right-to-left `dir`.
+    <article className="developer-reference" dir="ltr" lang="en">
       <header className="reference-hero">
         <p className="eyebrow">Always-English public contract</p>
         <h1>Recipes developer reference</h1>
@@ -238,18 +266,9 @@ export function Reference() {
         </p>
       </header>
 
-      <nav aria-label="Developer reference sections" className="reference-toc">
-        <a href="#reference-schema">Schema</a>
-        <a href="#reference-fields">Fields</a>
-        <a href="#reference-media">Media</a>
-        <a href="#reference-scaling">Scaling</a>
-        <a href="#reference-qdn">QDN lifecycle</a>
-        <a href="#reference-bridge">Bridge</a>
-        <a href="#reference-interchange">Interchange</a>
-        <a href="#reference-privacy">Privacy</a>
-      </nav>
+      <ReferenceNavigation />
 
-      <section className="reference-section" id="reference-schema">
+      <section className="reference-section" tabIndex={-1} id="reference-schema">
         <header><p className="eyebrow">Versioned data contract</p><h2>Recipe v1 JSON</h2></header>
         <div className="reference-grid">
           <article className="reference-card">
@@ -274,24 +293,26 @@ export function Reference() {
         <CodeExample id="recipe" label="Complete recipe.json example" />
       </section>
 
-      <section className="reference-section" id="reference-fields">
+      <section className="reference-section" tabIndex={-1} id="reference-fields">
         <header><p className="eyebrow">Validation</p><h2>Required and normalized fields</h2></header>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Field</th><th>Contract</th></tr></thead>
             <tbody>
-              <tr><td><code>id</code></td><td>Required; 8–24 ASCII letters, numbers, underscores, or hyphens.</td></tr>
-              <tr><td><code>name</code></td><td>Required; at most 200 UTF-8 bytes.</td></tr>
+              <tr><td><code>id</code></td><td>Required; {RECIPE_ID_MIN_LENGTH}–{RECIPE_ID_MAX_LENGTH} ASCII letters, numbers, underscores, or hyphens.</td></tr>
+              <tr><td><code>name</code></td><td>Required; at most {RECIPE_NAME_MAX_BYTES} UTF-8 bytes.</td></tr>
+              <tr><td><code>description</code></td><td>Optional; truncated to {RECIPE_DESCRIPTION_MAX_CHARS.toLocaleString()} characters (JavaScript string length, not UTF-8 bytes).</td></tr>
               <tr><td><code>ingredients</code></td><td>At least one accepted ingredient object.</td></tr>
-              <tr><td><code>instructions</code></td><td>At least one non-empty step; at most 200 retained.</td></tr>
+              <tr><td><code>instructions</code></td><td>At least one non-empty step; at most {RECIPE_INSTRUCTION_LIMIT} retained.</td></tr>
               <tr><td><code>baseServings</code></td><td>Optional positive number. Zero and negative values are invalid.</td></tr>
               <tr><td><code>prepMinutes</code>, <code>cookMinutes</code></td><td>Optional non-negative numbers.</td></tr>
-              <tr><td><code>tags</code></td><td>Trimmed, de-duplicated payload tags; at most 20 retained.</td></tr>
-              <tr><td><code>notes</code></td><td>Optional public notes; at most 100 non-empty entries retained.</td></tr>
-              <tr><td><code>media</code></td><td>Preferred placement-aware list of at most {RECIPE_MEDIA_LIMIT} media objects. Each has <code>id</code>, <code>uri</code>, <code>alt</code>, <code>caption</code>, and a placement. Invalid placements normalize to <code>gallery</code> so their images stay visible.</td></tr>
+              <tr><td><code>yieldText</code>, <code>category</code>, <code>cuisine</code></td><td>Optional text; truncated to {RECIPE_YIELD_MAX_CHARS}, {RECIPE_CATEGORY_MAX_CHARS}, and {RECIPE_CATEGORY_MAX_CHARS} characters.</td></tr>
+              <tr><td><code>tags</code></td><td>Trimmed, de-duplicated payload tags; at most {RECIPE_TAG_LIMIT} retained.</td></tr>
+              <tr><td><code>notes</code></td><td>Optional public notes; at most {RECIPE_NOTE_LIMIT} non-empty entries retained.</td></tr>
+              <tr><td><code>media</code></td><td>Preferred placement-aware list of at most {RECIPE_MEDIA_LIMIT} media objects. Each has <code>id</code>, <code>uri</code> ({RECIPE_MEDIA_URI_MAX_CHARS} characters), <code>alt</code> ({RECIPE_MEDIA_ALT_MAX_CHARS}), <code>caption</code> ({RECIPE_MEDIA_CAPTION_MAX_CHARS.toLocaleString()}), and a placement. Invalid placements normalize to <code>gallery</code> so their images stay visible.</td></tr>
               <tr><td><code>media[].placement</code></td><td><code>cover</code>; <code>gallery</code>; before/after the <code>ingredients</code> or <code>notes</code> section; or before/after a zero-based <code>instructionIndex</code>.</td></tr>
               <tr><td><code>image</code>, <code>images</code></td><td>Backward-compatible fields for older v1 readers. <code>image</code> is the cover URI and <code>images</code> contains all unique media URIs, cover first, up to {RECIPE_IMAGE_LIMIT}. A legacy payload without <code>media</code> upgrades its first image to <code>cover</code> and the rest to <code>gallery</code>.</td></tr>
-              <tr><td><code>source</code></td><td>Optional attribution name and URL; no private credentials.</td></tr>
+              <tr><td><code>source</code></td><td>Optional attribution <code>name</code> ({RECIPE_SOURCE_NAME_MAX_CHARS} characters) and <code>url</code> ({RECIPE_SOURCE_URL_MAX_CHARS.toLocaleString()}); no private credentials.</td></tr>
               <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>Positive epoch milliseconds; invalid values normalize to the read time.</td></tr>
             </tbody>
           </table>
@@ -302,7 +323,7 @@ export function Reference() {
         </aside>
       </section>
 
-      <section className="reference-section" id="reference-media">
+      <section className="reference-section" tabIndex={-1} id="reference-media">
         <header><p className="eyebrow">Placement-aware images</p><h2>Media placement and compatibility</h2></header>
         <div className="reference-grid">
           <article className="reference-card">
@@ -327,7 +348,7 @@ export function Reference() {
         </div>
       </section>
 
-      <section className="reference-section" id="reference-scaling">
+      <section className="reference-section" tabIndex={-1} id="reference-scaling">
         <header><p className="eyebrow">Presentation contract</p><h2>Ingredients and serving scaling</h2></header>
         <div className="reference-grid">
           <article className="reference-card">
@@ -352,7 +373,7 @@ export function Reference() {
         </div>
       </section>
 
-      <section className="reference-section" id="reference-qdn">
+      <section className="reference-section" tabIndex={-1} id="reference-qdn">
         <header><p className="eyebrow">Identity and lifecycle</p><h2>Discovery, ownership, and updates</h2></header>
         <div className="reference-grid">
           <article className="reference-card">
@@ -367,7 +388,7 @@ export function Reference() {
           <article className="reference-card">
             <h3>Identifiers and metadata</h3>
             <p>
-              The prefix plus the maximum 24-character id stays below QDN&apos;s 64-byte
+              The prefix plus the maximum {RECIPE_ID_MAX_LENGTH}-character id stays below QDN&apos;s 64-byte
               identifier limit. Published metadata uses at most {RECIPE_METADATA_TITLE_BYTES}
               title bytes, {RECIPE_METADATA_DESCRIPTION_BYTES} description bytes, and{' '}
               {RECIPE_METADATA_TAG_LIMIT} tags of {RECIPE_METADATA_TAG_BYTES} bytes each.
@@ -378,7 +399,7 @@ export function Reference() {
             <h3>Discovery and paging</h3>
             <p>
               Search uses the recipe identifier prefix, asks Core for reverse order, and
-              requests pages of 24 with an explicit <code>offset</code>. Search metadata is
+              requests pages of {RECIPE_SEARCH_PAGE_SIZE} with an explicit <code>offset</code>. Search metadata is
               untrusted discovery data; clients fetch and validate each selected JSON
               payload before treating it as a recipe.
             </p>
@@ -398,7 +419,7 @@ export function Reference() {
         </div>
       </section>
 
-      <section className="reference-section" id="reference-bridge">
+      <section className="reference-section" tabIndex={-1} id="reference-bridge">
         <header><p className="eyebrow">Qortium Home</p><h2>Feature detection and publication</h2></header>
         <div className="reference-grid">
           <article className="reference-card">
@@ -428,7 +449,7 @@ export function Reference() {
         </div>
       </section>
 
-      <section className="reference-section" id="reference-interchange">
+      <section className="reference-section" tabIndex={-1} id="reference-interchange">
         <header><p className="eyebrow">Portable output</p><h2>Schema.org Recipe JSON-LD</h2></header>
         <p>
           The app exports a Schema.org <code>Recipe</code> mapping for interoperability.
@@ -440,7 +461,7 @@ export function Reference() {
         <CodeExample id="jsonLd" label="Schema.org mapping outline" />
       </section>
 
-      <section className="reference-section" id="reference-privacy">
+      <section className="reference-section" tabIndex={-1} id="reference-privacy">
         <header><p className="eyebrow">Public by design</p><h2>Privacy and permanence</h2></header>
         <aside className="reference-callout reference-callout--warning">
           <strong>Every published recipe is public and durable.</strong>

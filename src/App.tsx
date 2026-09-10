@@ -65,6 +65,18 @@ function nodeStatusLabel(status: NodeStatus | null) {
   return status.syncPhase || 'Connected';
 }
 
+type LinkCopy = { identifier: string; link: string; name: string; state: 'copied' | 'unavailable' };
+
+export function copyLinkStatusText(copy: LinkCopy | null, selected: PublishedRecipe | null) {
+  if (!copy || !selected || copy.name !== selected.resource.name || copy.identifier !== selected.resource.identifier) {
+    return 'Copy link places this recipe’s shareable qdn:// address on the clipboard.';
+  }
+  return copy.state === 'copied'
+    ? 'Recipe link copied.'
+    // On failure show the raw link rather than an error the user cannot act on.
+    : `Clipboard unavailable. Copy this link manually: ${copy.link}`;
+}
+
 function metadataTitle(resource: QdnResource) {
   return resource.metadata?.title || 'Untitled recipe';
 }
@@ -87,6 +99,7 @@ export function App() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [linkCopy, setLinkCopy] = useState<LinkCopy | null>(null);
 
   const view = route.view;
   const canPublish =
@@ -359,14 +372,11 @@ export function App() {
     if (!selected?.resource.identifier) {
       return;
     }
-    const link = buildRecipeLink(selected.resource.name, selected.resource.identifier);
+    const { identifier, name } = selected.resource;
+    const link = buildRecipeLink(name, identifier);
     setError('');
-    // On failure show the raw link rather than an error the user cannot act on.
-    setNotice(
-      (await copyTextToClipboard(link))
-        ? 'Recipe link copied.'
-        : `Copy was blocked. Recipe link: ${link}`,
-    );
+    const state = (await copyTextToClipboard(link)) ? 'copied' : 'unavailable';
+    setLinkCopy({ identifier, link, name, state });
   }
 
   function isFavorite(resource: QdnResource) {
@@ -457,6 +467,7 @@ export function App() {
         {notice ? <div className="global-notice global-notice--success">{notice}</div> : null}
         <RecipeDetail
           canEdit={canEditResource(selected.resource, accountContext.writableNames)}
+          copyLinkStatus={copyLinkStatusText(linkCopy, selected)}
           favorite={selectedFavorite}
           onBack={() => showRoute({ view: 'browse' })}
           onCopyLink={copyRecipeLink}

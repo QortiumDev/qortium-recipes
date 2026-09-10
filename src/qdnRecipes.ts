@@ -16,6 +16,8 @@ export const RECIPE_METADATA_TITLE_BYTES = 80;
 export const RECIPE_METADATA_DESCRIPTION_BYTES = 240;
 export const RECIPE_METADATA_TAG_BYTES = 20;
 export const RECIPE_METADATA_TAG_LIMIT = 5;
+// Search page size. Equal to RECIPE_MEDIA_LIMIT by coincidence only.
+export const RECIPE_SEARCH_PAGE_SIZE = 24;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -80,7 +82,7 @@ export function requireTransactionSignature(result: PublishActionResult) {
   return signature;
 }
 
-export async function searchRecipeResources(query = '', offset = 0, limit = 24): Promise<QdnResource[]> {
+export async function searchRecipeResources(query = '', offset = 0, limit = RECIPE_SEARCH_PAGE_SIZE): Promise<QdnResource[]> {
   const result = await qdnRequest<unknown>({
     action: 'SEARCH_QDN_RESOURCES',
     excludeBlocked: true,

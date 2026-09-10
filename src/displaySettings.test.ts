@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  ACCENT_VALUES,
   applyDisplaySettings,
   DEFAULT_DISPLAY_SETTINGS,
   getDisplaySettingsUpdateFromMessage,
   getInitialDisplaySettings,
+  normalizeAccent,
   normalizeHomeSettingsHostMessage,
   normalizeUiStyle,
   type QdnDisplaySettings,
@@ -20,6 +22,14 @@ describe('Recipes display settings', () => {
     expect(normalizeUiStyle('Fun')).toBe('fun');
     expect(normalizeUiStyle('retro')).toBeNull();
     expect(normalizeUiStyle('chibi')).toBeNull();
+  });
+
+  it("accepts Home's clay accent alongside the original palette", () => {
+    expect(ACCENT_VALUES).toContain('clay');
+    expect(normalizeAccent('Clay')).toBe('clay');
+    expect(getDisplaySettingsUpdateFromMessage({ action: 'ACCENT_CHANGED', accent: 'clay' }, current))
+      .toEqual({ ...current, accent: 'clay' });
+    expect(normalizeAccent('mauve')).toBeNull();
   });
 
   it('defaults to the Home-compatible Classic family', () => {

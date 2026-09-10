@@ -45,6 +45,7 @@ function PlacedMedia({ items }: { items: RecipeMedia[] }) {
 
 export function RecipeDetail({
   canEdit,
+  copyLinkStatus,
   favorite,
   onBack,
   onCopyLink,
@@ -53,9 +54,10 @@ export function RecipeDetail({
   published,
 }: {
   canEdit: boolean;
+  copyLinkStatus: string;
   favorite: boolean;
   onBack: () => void;
-  onCopyLink: () => void;
+  onCopyLink: () => void | Promise<void>;
   onEdit: () => void;
   onToggleFavorite: () => void;
   published: PublishedRecipe;
@@ -102,7 +104,16 @@ export function RecipeDetail({
           <span aria-hidden="true" className="back-arrow">←</span> Browse
         </button>
         <div>
-          <button className="button button--ghost" type="button" onClick={onCopyLink}>
+          <button
+            className="button button--ghost"
+            type="button"
+            onClick={async (event) => {
+              const button = event.currentTarget;
+              await onCopyLink();
+              // Keep focus on the control; the status paragraph below announces the result.
+              button.focus({ preventScroll: true });
+            }}
+          >
             Copy link
           </button>
           <button className="button button--ghost" type="button" onClick={() => downloadSchemaOrg(recipe, resource.name)}>
@@ -114,6 +125,7 @@ export function RecipeDetail({
           {canEdit ? <button className="button" type="button" onClick={onEdit}>Edit recipe</button> : null}
         </div>
       </div>
+      <p aria-live="polite" className="copy-status" role="status">{copyLinkStatus}</p>
 
       <article className="recipe-detail">
         {imageUrls.length ? (

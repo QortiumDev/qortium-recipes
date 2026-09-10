@@ -27,10 +27,28 @@ function publishedRecipe(): PublishedRecipe {
 }
 
 describe('RecipeDetail image gallery', () => {
+  it('announces the copy-link result in a visible status region next to the control', () => {
+    const html = renderToStaticMarkup(
+      <RecipeDetail
+        canEdit={false}
+        copyLinkStatus="Recipe link copied."
+        favorite={false}
+        onBack={vi.fn()}
+        onCopyLink={vi.fn()}
+        onEdit={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        published={publishedRecipe()}
+      />,
+    );
+    expect(html).toContain('<p aria-live="polite" class="copy-status" role="status">Recipe link copied.</p>');
+    expect(html).toContain('Copy link');
+  });
+
   it('renders the cover and accessible controls for every image', () => {
     const html = renderToStaticMarkup(
       <RecipeDetail
         canEdit={false}
+        copyLinkStatus="Recipe link copied."
         favorite={false}
         onBack={vi.fn()}
         onCopyLink={vi.fn()}
@@ -84,6 +102,7 @@ describe('RecipeDetail image gallery', () => {
     const html = renderToStaticMarkup(
       <RecipeDetail
         canEdit={false}
+        copyLinkStatus="Copy link places this recipe’s shareable qdn:// address on the clipboard."
         favorite={false}
         onBack={vi.fn()}
         onCopyLink={vi.fn()}

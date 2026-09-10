@@ -27,8 +27,8 @@ npm run build
 
 ## Home display settings
 
-Recipes follows Qortium Home's resolved light/dark theme, accent, text size,
-language direction, and Classic/Modern/Fun UI family. It reads render URL and
+Recipes follows Qortium Home's resolved light/dark theme, accent (including
+Home's `clay`), text size, language direction, and Classic/Modern/Fun UI family. It reads render URL and
 host-injected settings before first paint, feature-detects `GET_HOME_SETTINGS`,
 and accepts both legacy display messages and the current Home settings events
 while it is open. Browser development can exercise the same contract with
@@ -67,4 +67,12 @@ reviewed by the author.
 The always-English in-app Developers workspace is the authoritative public
 contract for the schema, resource tuple, limits, ownership, QDN bridge actions,
 publication lifecycle, scaling rules, and Schema.org mapping. Recipe payloads
-are currently limited by the app to 512,000 UTF-8 bytes.
+are currently limited by the app to 512,000 UTF-8 bytes. The documented field
+limits and the search page size are read from the exported constants in
+`src/recipe.ts` and `src/qdnRecipes.ts`, and the reference's sample
+`recipe.json` is validated by the real reader in the test suite, so the prose
+cannot drift from the implementation. The reference renders `lang="en"
+dir="ltr"` even when Home runs a right-to-left language; its section links are
+full document links (not bare fragments) that keep Home's query parameters and
+scroll only inside the app, and every copy control reports its result in a
+visible `role="status"` region.

@@ -11,6 +11,25 @@ export const RECIPE_IDENTIFIER_PREFIX = 'qrecipes.v1.r.';
 export const RECIPE_MEDIA_LIMIT = 24;
 export const RECIPE_IMAGE_LIMIT = RECIPE_MEDIA_LIMIT;
 
+// Validation limits shared by validateRecipe, the editor, the Developers
+// reference, and the tests. Byte limits count UTF-8 bytes; character limits
+// count JS string length (UTF-16 code units), matching the `.slice` below.
+export const RECIPE_ID_MIN_LENGTH = 8;
+export const RECIPE_ID_MAX_LENGTH = 24;
+export const RECIPE_ID_PATTERN = new RegExp(`^[a-zA-Z0-9_-]{${RECIPE_ID_MIN_LENGTH},${RECIPE_ID_MAX_LENGTH}}$`);
+export const RECIPE_NAME_MAX_BYTES = 200;
+export const RECIPE_DESCRIPTION_MAX_CHARS = 4_000;
+export const RECIPE_YIELD_MAX_CHARS = 120;
+export const RECIPE_CATEGORY_MAX_CHARS = 80;
+export const RECIPE_INSTRUCTION_LIMIT = 200;
+export const RECIPE_TAG_LIMIT = 20;
+export const RECIPE_NOTE_LIMIT = 100;
+export const RECIPE_SOURCE_NAME_MAX_CHARS = 200;
+export const RECIPE_SOURCE_URL_MAX_CHARS = 1_000;
+export const RECIPE_MEDIA_URI_MAX_CHARS = 500;
+export const RECIPE_MEDIA_ALT_MAX_CHARS = 500;
+export const RECIPE_MEDIA_CAPTION_MAX_CHARS = 1_000;
+
 const UNICODE_FRACTIONS: Record<string, [number, number]> = {
   '½': [1, 2],
   '⅓': [1, 3],
@@ -222,7 +241,7 @@ export function createRecipeId() {
   const randomBytes = new Uint8Array(8);
   globalThis.crypto?.getRandomValues?.(randomBytes);
   const randomPart = Array.from(randomBytes, (value) => value.toString(36)).join('').slice(0, 12);
-  return `${Date.now().toString(36)}${randomPart || Math.random().toString(36).slice(2, 14)}`.slice(0, 24);
+  return `${Date.now().toString(36)}${randomPart || Math.random().toString(36).slice(2, 14)}`.slice(0, RECIPE_ID_MAX_LENGTH);
 }
 
 export function buildRecipeIdentifier(recipeId: string) {
@@ -458,7 +477,7 @@ function normalizeMediaEntry(
     return null;
   }
 
-  const uri = text(value.uri).slice(0, 500);
+  const uri = text(value.uri).slice(0, RECIPE_MEDIA_URI_MAX_CHARS);
   if (!uri) {
     return null;
   }
@@ -466,17 +485,17 @@ function normalizeMediaEntry(
   return {
     id: uniqueMediaId(text(value.id), index, usedIds),
     uri,
-    alt: text(value.alt).slice(0, 500),
-    caption: text(value.caption).slice(0, 1_000),
+    alt: text(value.alt).slice(0, RECIPE_MEDIA_ALT_MAX_CHARS),
+    caption: text(value.caption).slice(0, RECIPE_MEDIA_CAPTION_MAX_CHARS),
     placement: normalizeMediaPlacement(value.placement, instructionCount),
   };
 }
 
 function legacyMedia(value: Record<string, unknown>): RecipeMedia[] {
-  const legacyImage = text(value.image).slice(0, 500);
+  const legacyImage = text(value.image).slice(0, RECIPE_MEDIA_URI_MAX_CHARS);
   const uris = [...new Set([
     legacyImage,
-    ...(Array.isArray(value.images) ? value.images.map((image) => text(image).slice(0, 500)) : []),
+    ...(Array.isArray(value.images) ? value.images.map((image) => text(image).slice(0, RECIPE_MEDIA_URI_MAX_CHARS)) : []),
   ].filter(Boolean))].slice(0, RECIPE_MEDIA_LIMIT);
 
   return uris.map((uri, index) => ({
@@ -508,14 +527,14 @@ export function validateRecipe(value: unknown): RecipeValidation {
   }
 
   const id = text(value.id);
-  if (!/^[a-zA-Z0-9_-]{8,24}$/.test(id)) {
-    errors.push('Recipe ID must contain 8–24 letters, numbers, underscores, or hyphens.');
+  if (!RECIPE_ID_PATTERN.test(id)) {
+    errors.push(`Recipe ID must contain ${RECIPE_ID_MIN_LENGTH}–${RECIPE_ID_MAX_LENGTH} letters, numbers, underscores, or hyphens.`);
   }
 
   const name = text(value.name);
   if (!name) {
     errors.push('Recipe name is required.');
-  } else if (new TextEncoder().encode(name).byteLength > 200) {
+  } else if (new TextEncoder().encode(name).byteLength > RECIPE_NAME_MAX_BYTES) {
     errors.push('Recipe name is too long.');
   }
 
@@ -529,7 +548,7 @@ export function validateRecipe(value: unknown): RecipeValidation {
   }
 
   const instructions = Array.isArray(value.instructions)
-    ? value.instructions.map(text).filter(Boolean).slice(0, 200)
+    ? value.instructions.map(text).filter(Boolean).slice(0, RECIPE_INSTRUCTION_LIMIT)
     : [];
   if (!instructions.length) {
     errors.push('Add at least one instruction.');
@@ -546,7 +565,7 @@ export function validateRecipe(value: unknown): RecipeValidation {
 
   const source = isRecord(value.source) ? value.source : {};
   const tags = Array.isArray(value.tags)
-    ? [...new Set(value.tags.map(text).filter(Boolean))].slice(0, 20)
+    ? [...new Set(value.tags.map(text).filter(Boolean))].slice(0, RECIPE_TAG_LIMIT)
     : [];
   const usedMediaIds = new Set<string>();
   const normalizedMedia = Array.isArray(value.media)
@@ -569,23 +588,23 @@ export function validateRecipe(value: unknown): RecipeValidation {
       schema: RECIPE_SCHEMA,
       id,
       name,
-      description: text(value.description).slice(0, 4_000),
+      description: text(value.description).slice(0, RECIPE_DESCRIPTION_MAX_CHARS),
       baseServings,
-      yieldText: text(value.yieldText).slice(0, 120),
+      yieldText: text(value.yieldText).slice(0, RECIPE_YIELD_MAX_CHARS),
       prepMinutes: optionalNonNegativeNumber(value.prepMinutes),
       cookMinutes: optionalNonNegativeNumber(value.cookMinutes),
-      category: text(value.category).slice(0, 80),
-      cuisine: text(value.cuisine).slice(0, 80),
+      category: text(value.category).slice(0, RECIPE_CATEGORY_MAX_CHARS),
+      cuisine: text(value.cuisine).slice(0, RECIPE_CATEGORY_MAX_CHARS),
       tags,
       image: legacyImages.image,
       images: legacyImages.images,
       media,
       ingredients,
       instructions,
-      notes: Array.isArray(value.notes) ? value.notes.map(text).filter(Boolean).slice(0, 100) : [],
+      notes: Array.isArray(value.notes) ? value.notes.map(text).filter(Boolean).slice(0, RECIPE_NOTE_LIMIT) : [],
       source: {
-        name: text(source.name).slice(0, 200),
-        url: text(source.url).slice(0, 1_000),
+        name: text(source.name).slice(0, RECIPE_SOURCE_NAME_MAX_CHARS),
+        url: text(source.url).slice(0, RECIPE_SOURCE_URL_MAX_CHARS),
       },
       createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now(),
       updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : Date.now(),

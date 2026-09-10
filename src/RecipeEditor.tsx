@@ -4,6 +4,7 @@ import {
   parseIngredientLine,
   parseIngredientLines,
   RECIPE_MEDIA_LIMIT,
+  RECIPE_NAME_MAX_BYTES,
   recipeImageUrl,
   rebuildIngredientText,
   validateRecipe,
@@ -182,7 +183,7 @@ export function RecipeEditor({
           <h2>Basics</h2>
           <label className="field field--wide">
             <span>Recipe name *</span>
-            <input value={recipe.name} maxLength={200} onChange={(event) => patchRecipe({ name: event.target.value })} />
+            <input value={recipe.name} maxLength={RECIPE_NAME_MAX_BYTES} onChange={(event) => patchRecipe({ name: event.target.value })} />
           </label>
           <label className="field field--wide">
             <span>Description</span>

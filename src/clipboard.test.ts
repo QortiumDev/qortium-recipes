@@ -13,7 +13,9 @@ describe('copyTextToClipboard', () => {
       value: '', style: {} as Record<string, string>, setAttribute: vi.fn(),
       focus: vi.fn(), select: vi.fn(), setSelectionRange: vi.fn(),
     };
+    const previousFocus = { focus: vi.fn() };
     const documentRef = {
+      activeElement: previousFocus,
       body: { appendChild: vi.fn(), removeChild: vi.fn() },
       createElement: vi.fn(() => textarea),
       execCommand: vi.fn(() => true),
@@ -25,6 +27,27 @@ describe('copyTextToClipboard', () => {
     await expect(copyTextToClipboard('fallback', dependencies)).resolves.toBe(true);
     expect(textarea.value).toBe('fallback');
     expect(documentRef.execCommand).toHaveBeenCalledWith('copy');
+    // The hidden textarea took focus; the triggering control gets it back without scrolling.
+    expect(documentRef.body.removeChild).toHaveBeenCalledWith(textarea);
+    expect(previousFocus.focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it('restores focus even when the fallback copy command fails', async () => {
+    const previousFocus = { focus: vi.fn() };
+    const textarea = {
+      value: '', style: {} as Record<string, string>, setAttribute: vi.fn(),
+      focus: vi.fn(), select: vi.fn(), setSelectionRange: vi.fn(),
+    };
+    const documentRef = {
+      activeElement: previousFocus,
+      body: { appendChild: vi.fn(), removeChild: vi.fn() },
+      createElement: vi.fn(() => textarea),
+      execCommand: vi.fn(() => { throw new Error('denied'); }),
+    };
+    await expect(copyTextToClipboard('fallback', {
+      document: documentRef as unknown as ClipboardDependencies['document'],
+    })).resolves.toBe(false);
+    expect(previousFocus.focus).toHaveBeenCalledWith({ preventScroll: true });
   });
 
   it('reports unavailable when neither clipboard path can run', async () => {

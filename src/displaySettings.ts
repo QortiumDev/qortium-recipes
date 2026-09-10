@@ -1,4 +1,4 @@
-export const ACCENT_VALUES = ['green', 'blue', 'orange', 'purple', 'red', 'teal', 'cyan', 'pink', 'yellow'] as const;
+export const ACCENT_VALUES = ['green', 'blue', 'orange', 'purple', 'red', 'teal', 'cyan', 'pink', 'yellow', 'clay'] as const;
 export const TEXT_SIZE_VALUES = ['extra-small', 'small', 'medium', 'large', 'extra-large', 'huge'] as const;
 export const UI_STYLE_VALUES = ['classic', 'modern', 'fun'] as const;
 
