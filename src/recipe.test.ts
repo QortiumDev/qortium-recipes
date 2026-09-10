@@ -7,7 +7,16 @@ import {
   formatAmount,
   parseIngredientLine,
   parseIngredientLines,
+  createRecipeId,
+  RECIPE_DESCRIPTION_MAX_CHARS,
+  RECIPE_ID_MAX_LENGTH,
+  RECIPE_ID_MIN_LENGTH,
+  RECIPE_ID_PATTERN,
+  RECIPE_INSTRUCTION_LIMIT,
   RECIPE_MEDIA_LIMIT,
+  RECIPE_NAME_MAX_BYTES,
+  RECIPE_NOTE_LIMIT,
+  RECIPE_TAG_LIMIT,
   recipeImages,
   recipeMedia,
   recipeImageUrl,
@@ -116,6 +125,38 @@ describe('recipe validation and interchange', () => {
     expect(validation.recipe?.ingredients[0].item).toBe('');
     expect(validation.recipe && composeIngredientText(validation.recipe.ingredients[0], 0.5)).toBe('1 onion');
     expect(validation.recipe && composeIngredientText(validation.recipe.ingredients[0], 2)).toBe('4 onions');
+  });
+
+  it('enforces the exported id, name, and list limits', () => {
+    const base = () => {
+      const recipe = createBlankRecipe();
+      recipe.name = 'Oatmeal';
+      recipe.ingredients = parseIngredientLines('1 cup oats');
+      recipe.instructions = ['Cook.'];
+      return recipe;
+    };
+
+    const shortId = { ...base(), id: 'a'.repeat(RECIPE_ID_MIN_LENGTH - 1) };
+    expect(validateRecipe(shortId).errors).toContain(
+      `Recipe ID must contain ${RECIPE_ID_MIN_LENGTH}–${RECIPE_ID_MAX_LENGTH} letters, numbers, underscores, or hyphens.`,
+    );
+    expect(validateRecipe({ ...base(), id: 'a'.repeat(RECIPE_ID_MAX_LENGTH + 1) }).recipe).toBeNull();
+    expect(validateRecipe({ ...base(), id: 'a'.repeat(RECIPE_ID_MAX_LENGTH) }).recipe).not.toBeNull();
+    expect(createRecipeId()).toMatch(RECIPE_ID_PATTERN);
+
+    expect(validateRecipe({ ...base(), name: 'é'.repeat(RECIPE_NAME_MAX_BYTES / 2 + 1) }).errors)
+      .toContain('Recipe name is too long.');
+
+    const long = base();
+    long.description = 'd'.repeat(RECIPE_DESCRIPTION_MAX_CHARS + 5);
+    long.instructions = Array.from({ length: RECIPE_INSTRUCTION_LIMIT + 3 }, (_, index) => `Step ${index}`);
+    long.tags = Array.from({ length: RECIPE_TAG_LIMIT + 3 }, (_, index) => `tag${index}`);
+    long.notes = Array.from({ length: RECIPE_NOTE_LIMIT + 3 }, (_, index) => `note ${index}`);
+    const validation = validateRecipe(long);
+    expect(validation.recipe?.description).toHaveLength(RECIPE_DESCRIPTION_MAX_CHARS);
+    expect(validation.recipe?.instructions).toHaveLength(RECIPE_INSTRUCTION_LIMIT);
+    expect(validation.recipe?.tags).toHaveLength(RECIPE_TAG_LIMIT);
+    expect(validation.recipe?.notes).toHaveLength(RECIPE_NOTE_LIMIT);
   });
 
   it('creates stable resource identifiers', () => {

@@ -192,6 +192,9 @@
 :root[data-theme='dark'][data-accent='cyan'] { --qr-accent: #88d2ff; --qr-accent-hover: #79c5f5; --qr-accent-text: #03243d; --qr-accent-soft: rgb(136 210 255 / 12%); --qr-accent-ring: rgb(136 210 255 / 20%); }
 :root[data-theme='dark'][data-accent='pink'] { --qr-accent: #f8a7cf; --qr-accent-hover: #f58cbf; --qr-accent-text: #2a0d23; --qr-accent-soft: rgb(248 167 207 / 12%); --qr-accent-ring: rgb(248 167 207 / 20%); }
 :root[data-theme='dark'][data-accent='yellow'] { --qr-accent: #f4cb67; --qr-accent-hover: #edbf53; --qr-accent-text: #2f2100; --qr-accent-soft: rgb(244 203 103 / 12%); --qr-accent-ring: rgb(244 203 103 / 20%); }
+/* Home clay uses the same display tokens as every other accent. */
+:root[data-accent='clay'] { --qr-accent: #b5652d; --qr-accent-hover: #9c5424; --qr-accent-text: #1e1400; --qr-accent-soft: rgb(181 101 45 / 10%); --qr-accent-ring: rgb(181 101 45 / 20%); }
+:root[data-theme='dark'][data-accent='clay'] { --qr-accent: #e3b48f; --qr-accent-hover: #edc7a8; --qr-accent-text: #2b1608; --qr-accent-soft: rgb(227 180 143 / 12%); --qr-accent-ring: rgb(227 180 143 / 20%); }
 
 * {
   box-sizing: border-box;
@@ -396,7 +399,7 @@ pre {
 }
 
 .button {
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid var(--green);
   border-radius: var(--qr-radius);
   background: var(--green);
@@ -866,8 +869,32 @@ h2 {
 }
 
 .reference-code > header .button {
-  min-height: 34px;
+  min-height: 44px;
   padding: 5px 10px;
+}
+
+.reference-copy-status,
+.copy-status {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--qr-muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.reference-copy-status {
+  border-bottom: 1px solid var(--qr-border);
+  padding: 6px 10px;
+}
+
+.copy-status {
+  margin-top: 8px;
+}
+
+.reference-section:focus-visible,
+.reference-code pre:focus-visible {
+  outline: 2px solid var(--qr-accent);
+  outline-offset: -2px;
 }
 
 .reference-code pre {

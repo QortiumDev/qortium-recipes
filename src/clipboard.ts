@@ -1,5 +1,5 @@
 export interface ClipboardDependencies {
-  document?: Pick<Document, 'body' | 'createElement' | 'execCommand'>;
+  document?: Pick<Document, 'body' | 'createElement' | 'execCommand'> & { activeElement?: Element | null };
   navigator?: { clipboard?: { writeText?: (text: string) => Promise<void> | void } };
 }
 
@@ -21,6 +21,9 @@ export async function copyTextToClipboard(
   if (!documentRef?.body || !documentRef.createElement || !documentRef.execCommand) {
     return false;
   }
+  // The temporary textarea steals focus; hand it back to the triggering
+  // control afterwards without scrolling the app (or Home's outer document).
+  const previousFocus = documentRef.activeElement as HTMLElement | null | undefined;
   const textarea = documentRef.createElement('textarea');
   textarea.value = text;
   textarea.setAttribute('readonly', '');
@@ -38,5 +41,6 @@ export async function copyTextToClipboard(
     return false;
   } finally {
     documentRef.body.removeChild(textarea);
+    previousFocus?.focus?.({ preventScroll: true });
   }
 }
